@@ -59,6 +59,10 @@ def llm_call(state: AgentState) -> dict[str, List[AIMessage]]:
     """
     LLM decides whether to call a tool or not.
     """
+    # Regenerate tools each llm call to make sure they are up-to-date with
+    # whatever dataset we are currently using.
+    state.tools = generate_tools(state.dataset)
+
     # Initialize Gemini Client + bind tools
     llm = ChatGoogleGenerativeAI(model="gemini-3.1-pro-preview",
                                  temperature=0).bind_tools(state.tools)
@@ -214,10 +218,11 @@ if __name__ == "__main__":
         history.append(user_message)
 
         # Initialize state
-        inputs = {"messages": history,
-                  "dataset": DS,
-                  "tools": generate_tools(DS)
-                  }
+        inputs = {
+            "messages": history,
+            "dataset": DS,
+            "tools": generate_tools(DS)
+        }
 
         # Run graph
         results = app.invoke(inputs)

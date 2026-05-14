@@ -19,7 +19,8 @@ class AgentState(BaseModel):
 
     # Ensure this is opened lazily (e.g., xr.open_dataset(path, chunks="auto"))
     dataset: Dataset = Field(
-        description="The primary NetCDF lazy-loaded dataset")
+        description="The primary NetCDF lazy-loaded dataset"
+    )
 
     # This gets overwritten every time the agent decides to change the view
     active_selection: Optional[Dataset] = Field(
@@ -30,10 +31,16 @@ class AgentState(BaseModel):
 
     @model_validator(mode='after')
     def sync_active_selection(self) -> 'AgentState':
+        """
+            If we didn't provide a slice, start with the whole dataset
+            The tools modify the active selection in place, so we need to
+            make sure it's always there
+        """
         if self.active_selection is None:
-            # If we didn't provide a slice, start with the whole thing
             self.active_selection = self.dataset
         return self
 
-    # The list of tools corresponding to the specific dataset
-    tools: List[Any] = Field(...)
+    # The list of tools for the specific dataset
+    tools: Optional[List[Any]] = Field(
+        description="A list of tools updated to match the dataset"
+    )

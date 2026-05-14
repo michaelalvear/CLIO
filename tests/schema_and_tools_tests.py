@@ -150,8 +150,8 @@ def add_test(state: AgentState) -> dict[str, List[AIMessage]]:
     """
 
     current_test = test_cases.pop(0)
-    # AIMessage expects the tool calls to be contained in a list, so we double
-    # checking here
+    # AIMessage expects the tool calls to be contained in a list, so we double-
+    # check here
     if type(current_test) != list:
         current_test = [current_test]
     new_msg = AIMessage(content="", tool_calls=current_test)
