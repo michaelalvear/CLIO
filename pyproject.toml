@@ -24,6 +24,7 @@ dependencies = [
 
     # Data Science and NetCDF
     "xarray",
+    "cf_xarray",
     "netcdf4",
     "dask",
     "pandas",

@@ -7,17 +7,19 @@ from dotenv import load_dotenv
 
 # Langgraph/Langchain
 from langgraph.graph import StateGraph, START, END
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
 # Xarray
 import xarray as xr
+
+# Typing
+from typing import List, Literal
 
 # Modules under test
 from ursa.agent.tools import generate_tools, ursa_tool_node
 from ursa.agent.schemas import AgentState
 
-
-# ++++++++++ Initializing Tool Calls ++++++++++
+# ++++++++++ Initializing Test Cases ++++++++++
 bisect_context_retriever_call = {
     "name": "bisect_context_retriever",
     "args": {
@@ -50,9 +52,9 @@ spatial_temporal_select_call = {
 filter_by_value_call = {
     "name": "filter_by_value",
     "args": {
-        "target": "head",
+        "target": "salinity",
         "symbol": ">",
-        "value": 0.25
+        "value": 30
     },
     "id": "call_4",
     "type": "tool_call"
@@ -118,57 +120,98 @@ inspect_selection_call_2 = {
     "type": "tool_call"
 }
 
-tool_node_message = AIMessage(
-    content="",
-    tool_calls=[bisect_context_retriever_call,
-                dataset_metadata_retriever_call,
-                spatial_temporal_select_call,
-                filter_by_value_call,
-                resample_time_series_call,
-                reduce_dimension_call,
-                inspect_selection_call_1,
-                geocoding_tool_call,
-                reverse_geocoding_tool_call,
-                reset_view_call,
-                inspect_selection_call_2
-                ]
-)
+tool_calls = [
+    bisect_context_retriever_call,
+    dataset_metadata_retriever_call,
+    spatial_temporal_select_call,
+    filter_by_value_call,
+    resample_time_series_call,
+    reduce_dimension_call,
+    inspect_selection_call_1,
+    geocoding_tool_call,
+    reverse_geocoding_tool_call,
+    reset_view_call,
+    inspect_selection_call_2
+]
 
+test_cases = [tool_calls]
+
+for call in tool_calls:
+    test_cases.append(call)
 
 # ++++++++++ Graph setup ++++++++++
 graph = StateGraph(AgentState)
 
+
+def add_test(state: AgentState) -> dict[str, List[AIMessage]]:
+    """
+        Wraps test cases in an AI message, so they can be processed by the tool
+        node.
+    """
+
+    current_test = test_cases.pop(0)
+    # AIMessage expects the tool calls to be contained in a list, so we double
+    # checking here
+    if type(current_test) != list:
+        current_test = [current_test]
+    new_msg = AIMessage(content="", tool_calls=current_test)
+    return {"messages": [new_msg]}
+
+
+def are_there_more_tests(state: AgentState) -> Literal[
+    "no more tests", "more tests"]:
+    """
+        Decide whether we still have tests to process.
+    """
+
+    if len(test_cases) == 0:
+        return "no more tests"
+    else:
+        return "more tests"
+
+
+graph.add_node("add test", add_test)
 graph.add_node("tool node", ursa_tool_node)
 
-graph.add_edge(START, "tool node")
-graph.add_edge("tool node", END)
+graph.add_edge(START, "add test")
+graph.add_edge("add test", "tool node")
+graph.add_conditional_edges(
+    "tool node",
+    are_there_more_tests,
+    {
+        "more tests": "add test",
+        "no more tests": END
+    }
+)
 
 app = graph.compile()
+
 # ++++++++++ Check Test Results ++++++++++
 load_dotenv()
 DS = xr.open_dataset(os.getenv("NETCDF_DATA_PATH"), chunks="auto")
 my_tools = generate_tools(DS)
 
-initial_state = {
-    "messages": [tool_node_message],
-    "dataset": DS,
-    "tools": my_tools
-}
+initial_state = {"messages": [], "dataset": DS, "tools": my_tools}
 
-final_state = app.invoke(initial_state)
+results = app.invoke(initial_state)
 
-print(f"\n{'=' * 30}")
-print("TEST START")
-print(f"{'=' * 30}\n")
-for msg in final_state["messages"]:
-    # Skip the initial "AI message", just show the Tool responses
-    if msg.type == "tool":
+print("\nSTART")
+print(f"{'@' * 80}")
+test_count = 0
+for msg in results["messages"]:
+
+    if isinstance(msg, AIMessage):
+        test_count += 1
+        print(f"\n{'=' * 30}")
+        print(f"TEST {test_count}")
+        print(f"{'=' * 30}")
+
+    if isinstance(msg, ToolMessage):
         print(f"\n{'+' * 40}")
         print(f"TOOL: {msg.name.upper() if msg.name else ''}")
         print(f"RESPONDING TO: {msg.tool_call_id}")
         print(f"RESULT:\n{msg.content}")
-        print(f"{'+' * 40}\n")
+        print(f"{'+' * 40}")
 
-print(f"\n{'=' * 30}")
-print("TEST END")
-print(f"{'=' * 30}\n")
+print(f"\n{'@' * 80}")
+print("END\n")
