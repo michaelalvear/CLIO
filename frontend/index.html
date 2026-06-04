@@ -132,6 +132,29 @@
     #chart-section { display: none; }
     #chart-wrap { position: relative; height: 220px; }
 
+    /* ── TOOL LOG ────────────────────────────────────── */
+    .tool-log {
+      margin-top: 10px; max-width: 320px; width: 100%;
+      font-size: 12px; color: var(--muted);
+    }
+    .tool-log details { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .tool-log summary {
+      padding: 6px 10px; cursor: pointer; user-select: none;
+      background: #f8fafc; font-weight: 600; list-style: none;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .tool-log summary::-webkit-details-marker { display: none; }
+    .tool-log summary::before { content: "▶"; font-size: 9px; transition: transform 0.15s; }
+    .tool-log details[open] summary::before { transform: rotate(90deg); }
+    .tool-log-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+    .tool-log-entry { background: #f0f4f8; border-radius: 6px; padding: 6px 8px; }
+    .tool-log-query { color: var(--text); margin-bottom: 3px; }
+    .tool-log-pages { color: var(--accent); font-weight: 600; }
+    .stats-grounded {
+      margin-top: 8px; max-width: 320px; font-size: 11px;
+      color: var(--muted); display: flex; align-items: center; gap: 5px;
+    }
+
     /* ── WELCOME ─────────────────────────────────────── */
     #welcome { text-align: center; margin-top: 48px; }
     #welcome h1 { font-size: 2.2rem; letter-spacing: -1px; color: var(--accent); }
@@ -272,14 +295,14 @@ const chatThread = document.getElementById("chat-thread");
 const inputEl    = document.getElementById("input");
 
 const suggestionsPool = [
-  "What does the salinity pattern here suggest?",
-  "Is this level of salinity normal for this region?",
-  "What could cause salinity to change over time here?",
-  "How does BISECT model salinity in coastal areas?",
-  "What impact could sea level rise have on this region?",
-  "Explain the key assumptions behind the BISECT model.",
-  "What does elevated salinity indicate for freshwater resources?",
-  "How were the SSP scenarios used in BISECT?",
+  "What does this pattern suggest about the region?",
+  "Is this value range typical for this type of area?",
+  "What could explain the trend over time?",
+  "What are the key assumptions behind this model?",
+  "How should decision-makers interpret these values?",
+  "What physical processes drive variability here?",
+  "What are the limitations of this dataset?",
+  "How was this variable measured or simulated?",
 ];
 
 function generateWelcomeChips() {
@@ -302,10 +325,55 @@ function addUserMessage(text) {
   chatThread.scrollTop = chatThread.scrollHeight;
 }
 
-function addAssistantMessage(text) {
+function addAssistantMessage(text, toolLog) {
   const row = document.createElement("div");
   row.className = "message-row";
   row.innerHTML = `<div class="assistant-text">${escHtml(text)}</div>`;
+
+  // Build tool log widget
+  const logEl = document.createElement("div");
+  logEl.className = "tool-log";
+
+  const ragCalls = (toolLog || []).filter(e => e.type === "call" && e.tool === "retrieve_domain_context");
+
+  if (ragCalls.length > 0) {
+    // Pair each call with its result to extract cited page numbers
+    const results = (toolLog || []).filter(e => e.type === "result");
+    const entries = ragCalls.map((call, i) => {
+      const query   = call.args?.query || call.args?.input || JSON.stringify(call.args);
+      const content = results[i]?.content || "";
+      const pages   = [...new Set(
+        [...content.matchAll(/PAGE:\s*([^\n]+)/g)].map(m => m[1].trim())
+      )];
+      return { query, pages };
+    });
+
+    const details = document.createElement("details");
+    const chunkCount = results.reduce((n, r) => {
+      return n + ([...r.content.matchAll(/SOURCE PAGE:/g)].length || 1);
+    }, 0);
+    details.innerHTML = `<summary>Domain knowledge base — ${chunkCount} chunk${chunkCount !== 1 ? "s" : ""} retrieved</summary>`;
+
+    const body = document.createElement("div");
+    body.className = "tool-log-body";
+    entries.forEach(({ query, pages }) => {
+      const entry = document.createElement("div");
+      entry.className = "tool-log-entry";
+      entry.innerHTML =
+        `<div class="tool-log-query">Query: "${escHtml(query)}"</div>` +
+        (pages.length
+          ? `<div class="tool-log-pages">Pages: ${pages.map(escHtml).join(", ")}</div>`
+          : `<div class="tool-log-pages">Pages: not parsed</div>`);
+      body.appendChild(entry);
+    });
+    details.appendChild(body);
+    logEl.appendChild(details);
+  } else {
+    // No RAG calls — response was based solely on injected selection stats
+    logEl.innerHTML = `<div class="stats-grounded">&#9432; Response based on selected region statistics only</div>`;
+  }
+
+  row.appendChild(logEl);
   chatThread.appendChild(row);
   chatThread.scrollTop = chatThread.scrollHeight;
 }
@@ -360,7 +428,7 @@ async function submitQuery() {
     removeThinkingIndicator();
 
     const reply = data.textResponse || data.error || "No response.";
-    addAssistantMessage(reply);
+    addAssistantMessage(reply, data.toolLog);
     conversationHistory.push({ role: "assistant", content: reply });
   } catch (err) {
     removeThinkingIndicator();

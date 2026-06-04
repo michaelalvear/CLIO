@@ -17,14 +17,14 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
 from ursa.agent.tools import build_tools
 from ursa.agent.schemas import AgentState
-from ursa.agent.message_formatter import format_msg
+from ursa.cf_utils import dataset_prompt_block
 
 load_dotenv()
 
 # ── Tools & LLM ─────────────────────────────────────────────────────────────
 
 TOOLS = build_tools()
-_llm  = ChatGoogleGenerativeAI(model="gemini-2.5-pro-preview-05-06", temperature=0)
+_llm  = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
 _llm_with_tools = _llm.bind_tools(TOOLS)
 
 # ── Graph nodes ─────────────────────────────────────────────────────────────
@@ -55,39 +55,39 @@ agent = graph.compile()
 
 DS = xr.open_dataset(os.getenv("NETCDF_DATA_PATH"), chunks="auto")
 
+# Build the dataset description once at startup so the prompt always reflects
+# whatever file is configured — no BISECT-specific text anywhere below.
+_DATASET_BLOCK = dataset_prompt_block(DS)
+
 # ── System prompt ─────────────────────────────────────────────────────────────
 
 _BASE_PROMPT = """\
-You are a helpful scientific interpreter for URSA (Universal Rasterized Science \
-Agent). Your role is to help non-technical South Florida stakeholders — city \
-council members, engineers, developers — understand hydrological data produced \
-by the Biscayne and Southern Everglades Coastal Transport (BISECT) model.
+You are a scientific data interpreter for URSA (Universal Rasterized Science \
+Agent). Your role is to help users — including non-technical stakeholders such \
+as engineers, planners, and decision-makers — understand spatiotemporal \
+environmental data.
 
-The paper documenting BISECT is:
-"The Hydrologic System of the South Florida Peninsula: Development and \
-Application of the Biscayne and Southern Everglades Coastal Transport (BISECT) \
-Model"
-Authors: Eric D. Swain, Melinda A. Lohmann, and Carl R. Goodwin.
+{dataset_block}
 
-You have one tool: bisect_context_retriever. Use it to fetch supporting context \
-from the paper whenever a question calls for methodological detail, historical \
-background, or scientific explanation. Always provide complete citations.
+You have one tool: retrieve_domain_context. Use it to fetch supporting context \
+from the domain knowledge base whenever a question calls for methodological \
+detail, scientific background, or explanation of model assumptions. \
+Always provide complete citations including source page numbers.
 
 The user has already selected a geographic region on an interactive map. The \
-summary statistics for that selection are embedded in this prompt. You must \
-treat those numbers as ground truth — do not invent or extrapolate values \
-beyond what is given.
+summary statistics for that selection are provided in this prompt. Treat those \
+numbers as ground truth — do not invent or extrapolate values beyond what is \
+given. Units are as reported in the dataset metadata above.
 
-NaN values in the data indicate land or ocean areas outside the model domain.
-
-Salinity values are in grams per liter (g/L), converted from the model's \
-native PSU units.
+NaN or null values in the data indicate areas outside the model domain \
+(e.g. land, ocean, or masked regions).
 
 Use plain text only. Do not use markdown such as **bold**, *italic*, or headers.\
 """
 
 
 def _build_system_prompt(selection_context: dict | None) -> str:
+    base = _BASE_PROMPT.format(dataset_block=_DATASET_BLOCK)
     if selection_context:
         ctx_block = (
             "\n\nCURRENT DATA SELECTION (user-defined map region):\n"
@@ -98,7 +98,7 @@ def _build_system_prompt(selection_context: dict | None) -> str:
             "\n\nNo data selection is active yet. "
             "Ask the user to draw a region on the map first."
         )
-    return _BASE_PROMPT + ctx_block
+    return base + ctx_block
 
 
 # ── Flask interface ───────────────────────────────────────────────────────────
@@ -162,28 +162,3 @@ def run_agent(
     return {"text": content, "toolLog": tool_log}
 
 
-# ── Console debug mode ────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    history = [SystemMessage(content=_build_system_prompt(None))]
-    total_tokens = 0
-
-    while True:
-        user_input = input("~$ ")
-        if user_input == "exit":
-            break
-
-        history.append(HumanMessage(content=user_input))
-        result = agent.invoke({"messages": history})
-        new_messages = result["messages"][len(history):]
-        history.extend(new_messages)
-
-        for msg in new_messages:
-            print(format_msg(msg))
-
-    for msg in history:
-        if isinstance(msg, AIMessage) and getattr(msg, "usage_metadata", None):
-            total_tokens += msg.usage_metadata.get("total_tokens", 0)
-
-    bar = "-" * 30
-    print(f"{bar}\n|Token consumption: {total_tokens}|\n{bar}")

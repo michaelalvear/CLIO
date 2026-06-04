@@ -12,10 +12,10 @@ from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
-from pyproj import Transformer
 
 from ursa.agent.orchestration import DS, run_agent
 from ursa.data_processor import process_region
+from ursa.cf_utils import detect_crs, get_cf_axes, get_transformers
 
 load_dotenv()
 
@@ -42,7 +42,7 @@ def region_select():
       {
         "bbox":       {"sw": [lat, lon], "ne": [lat, lon]},
         "time_range": ["YYYY-MM-DD", "YYYY-MM-DD"],
-        "variable":   "salinity"
+        "variable":   "my_variable"
       }
     """
     body = request.get_json()
@@ -103,24 +103,33 @@ def query():
 
 @app.route("/dataset/info", methods=["GET"])
 def dataset_info():
-    _utm_to_latlon = Transformer.from_crs("EPSG:26917", "EPSG:4326", always_xy=True)
+    axes                   = get_cf_axes(DS)
+    x_dim, y_dim, t_dim    = axes["x_dim"], axes["y_dim"], axes["t_dim"]
+    crs                    = detect_crs(DS)
+    to_latlon, _           = get_transformers(crs)
 
-    x_min = float(DS["x"].min())
-    x_max = float(DS["x"].max())
-    y_min = float(DS["y"].min())
-    y_max = float(DS["y"].max())
-    lon_sw, lat_sw = _utm_to_latlon.transform(x_min, y_min)
-    lon_ne, lat_ne = _utm_to_latlon.transform(x_max, y_max)
+    x_min = float(DS[x_dim].min())
+    x_max = float(DS[x_dim].max())
+    y_min = float(DS[y_dim].min())
+    y_max = float(DS[y_dim].max())
+
+    if to_latlon is None:
+        lat_sw, lon_sw = y_min, x_min
+        lat_ne, lon_ne = y_max, x_max
+    else:
+        lon_sw, lat_sw = to_latlon.transform(x_min, y_min)
+        lon_ne, lat_ne = to_latlon.transform(x_max, y_max)
+
+    skip = {"crs", "spatial_ref", "grid_mapping"}
+    variables = [v for v in DS.data_vars if v not in skip
+                 and DS[v].ndim > 0
+                 and "grid_mapping_name" not in DS[v].attrs]
 
     return jsonify({
-        "variables":  list(DS.data_vars),
+        "variables":  variables,
         "time_range": {
-            "start": str(DS["time"].values[0])[:10],
-            "end":   str(DS["time"].values[-1])[:10],
-        },
-        "spatial_bounds": {
-            "x_min": x_min, "x_max": x_max,
-            "y_min": y_min, "y_max": y_max,
+            "start": str(DS[t_dim].values[0])[:10],
+            "end":   str(DS[t_dim].values[-1])[:10],
         },
         "lat_lon_bounds": {
             "sw": [round(lat_sw, 5), round(lon_sw, 5)],

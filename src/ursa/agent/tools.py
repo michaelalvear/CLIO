@@ -1,5 +1,7 @@
-"""Tools provided to the agent. The agent is now an interpreter, so the
-only tool it needs is RAG access to the BISECT paper."""
+"""Tools provided to the agent.
+The only tool is a RAG retriever over a domain knowledge base whose
+collection name is configured via the CHROMADB_COLLECTION env var.
+"""
 
 import os
 from dotenv import load_dotenv
@@ -15,10 +17,12 @@ def build_tools() -> list:
     """Return the list of tools available to the agent."""
     embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
 
+    collection = os.getenv("CHROMADB_COLLECTION", "domain_knowledge")
+
     vectorstore = Chroma(
         persist_directory=os.getenv("CHROMADB_PATH"),
         embedding_function=embeddings,
-        collection_name="BISECT",
+        collection_name=collection,
     )
 
     retriever = vectorstore.as_retriever(
@@ -28,16 +32,21 @@ def build_tools() -> list:
 
     doc_prompt = PromptTemplate.from_template(
         "--- DOCUMENT CHUNK ---\n"
-        "SOURCE PAGE: {page_label}\n"
+        "SOURCE: {source_title}\n"
+        "PAGE: {page_label}\n"
         "CONTENT: {page_content}\n"
     )
 
-    bisect_context_retriever = create_retriever_tool(
+    retrieve_domain_context = create_retriever_tool(
         retriever=retriever,
-        name="bisect_context_retriever",
-        description="Search and return relevant portions of the BISECT paper.",
+        name="retrieve_domain_context",
+        description=(
+            "Search and return relevant context from the domain knowledge base. "
+            "Use this for questions about model methodology, scientific background, "
+            "or explanation of dataset assumptions."
+        ),
         document_prompt=doc_prompt,
         response_format="content",
     )
 
-    return [bisect_context_retriever]
+    return [retrieve_domain_context]
