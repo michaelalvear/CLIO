@@ -3,851 +3,518 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>URSA</title>
+  <title>URSA Dashboard</title>
+
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Leaflet Draw -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:          #ffffff;
-      --bg2:         #f8f9fa;
-      --bg3:         #f1f3f5;
-      --bg4:         #e9ecef;
-      --accent:      #1a56a0;
-      --accent-dim:  #1e4d8c;
-      --border:      rgba(0,0,0,0.10);
-      --border-med:  rgba(0,0,0,0.16);
-      --text:        #1a1a1a;
-      --text2:       #4a4a4a;
-      --text3:       #888888;
-      --user-bg:     #dce8f7;
-      --radius:      8px;
-      --sidebar-w:   290px;
+      --bg: #f4f7f9;
+      --card: #ffffff;
+      --accent: #4a90e2;
+      --accent-gradient: linear-gradient(135deg, #4a90e2 0%, #673ab7 100%);
+      --border: rgba(0,0,0,0.06);
+      --text: #2d3436;
+      --muted: #636e72;
+      --radius: 16px;
     }
 
-    html, body { height: 100%; font-family: 'Georgia', 'Times New Roman', serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+    html, body { height: 100%; font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); }
 
-    /* ── APP SHELL ─────────────────────────────────── */
-    #app { display: flex; height: 100vh; overflow: hidden; }
+    /* ── APP LAYOUT ─────────────────────────────────── */
+    #app { display: flex; height: 100vh; padding: 16px; gap: 16px; overflow: hidden; }
 
-    /* ── SIDEBAR ───────────────────────────────────── */
-    #sidebar {
-      width: var(--sidebar-w);
-      min-width: var(--sidebar-w);
-      background: var(--bg2);
-      border-right: 1px solid var(--border);
+    /* ── SHARED PANEL STYLE ─────────────────────────── */
+    .panel {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+      border: 1px solid rgba(255,255,255,0.8);
+      overflow: hidden;
       display: flex;
       flex-direction: column;
-      overflow-y: auto;
-      overflow-x: hidden;
     }
 
-    #sidebar::-webkit-scrollbar { width: 3px; }
-    #sidebar::-webkit-scrollbar-thumb { background: var(--border); }
+    /* ── CHAT PANEL ─────────────────────────────────── */
+    #chat-panel { flex: 0 0 380px; }
 
-    #brand {
-      padding: 20px 18px 16px;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    #brand-name {
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      color: var(--accent);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-
-    #brand-sub {
-      font-size: 10px;
-      color: var(--text3);
-      letter-spacing: 0.04em;
-      margin-top: 2px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-
-    .sidebar-section { padding: 14px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-
-    .sidebar-label {
-      font-size: 9px;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      font-weight: 700;
-      color: var(--text3);
-      margin-bottom: 10px;
-    }
-
-    #coverage-map {
-      height: 188px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      overflow: hidden;
-      background: var(--bg3);
-    }
-
-    #coverage-map-offline {
-      height: 188px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      background: var(--bg3);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      color: var(--text3);
-    }
-
-    #selection-section { display: none; }
-
-    #selection-info {
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 10px 12px;
-      font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
-      font-size: 11px;
-      color: var(--text2);
-      line-height: 2;
-    }
-
-    #selection-info .info-row { display: flex; justify-content: space-between; gap: 8px; }
-    #selection-info .info-key { color: var(--text3); }
-    #selection-info .info-val { color: var(--text); font-weight: 500; text-align: right; }
-
-    /* ── MAIN ──────────────────────────────────────── */
-    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-
-    /* ── CHAT THREAD ───────────────────────────────── */
     #chat-thread {
       flex: 1;
       overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-    }
-
-    #chat-thread::-webkit-scrollbar { width: 4px; }
-    #chat-thread::-webkit-scrollbar-track { background: transparent; }
-    #chat-thread::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-    /* ── WELCOME ───────────────────────────────────── */
-    #welcome {
-      flex: 1;
+      padding: 32px 24px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 10px;
-      text-align: center;
-      padding: 48px 32px;
-      color: var(--text3);
     }
 
-    #welcome-title {
-      font-size: 42px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      color: var(--accent);
-      line-height: 1;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-
-    #welcome-sub { font-size: 14px; color: var(--text2); font-weight: 400; margin-top: 4px; font-style: italic; }
-
-    #welcome-hint {
-      font-size: 13px;
-      max-width: 400px;
-      line-height: 1.7;
-      margin-top: 8px;
-      color: var(--text2);
-    }
-
-    #welcome-chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      justify-content: center;
-      margin-top: 16px;
-      max-width: 500px;
-    }
-
-    .welcome-chip {
-      background: var(--bg3);
-      border: 1px solid var(--border-med);
-      border-radius: 4px;
-      padding: 5px 13px;
-      font-size: 12px;
-      color: var(--text2);
-      cursor: pointer;
-      transition: all 0.15s;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-
-    .welcome-chip:hover { border-color: var(--accent); color: var(--accent); background: rgba(26,86,160,0.06); }
-
-    /* ── MESSAGES ──────────────────────────────────── */
-    .message-row {
-      padding: 18px 28px;
-      display: flex;
-    }
-
-    .message-row.user-row { justify-content: flex-end; }
-    .message-row.assistant-row { justify-content: flex-start; }
-
-    .message-row + .message-row { border-top: 1px solid var(--border); }
+    .message-row { padding: 12px 0; width: 100%; display: flex; flex-direction: column; align-items: center; }
 
     .user-bubble {
-      background: var(--user-bg);
-      border-radius: var(--radius);
-      border-bottom-right-radius: 3px;
-      padding: 11px 16px;
-      max-width: 72%;
-      white-space: pre-wrap;
-      word-break: break-word;
-      color: #1a3a5c;
-      font-size: 14px;
-      line-height: 1.65;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.08);
-      border: 1px solid rgba(26,86,160,0.15);
-    }
-
-    .assistant-card { width: 100%; max-width: 100%; }
-
-    .assistant-name {
-      font-size: 9px;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      font-weight: 700;
-      color: var(--accent);
-      margin-bottom: 10px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-
-    .assistant-text {
-      white-space: pre-wrap;
-      word-break: break-word;
-      line-height: 1.8;
-      color: var(--text);
-      font-size: 14px;
-    }
-
-    /* ── CHART BUTTONS ─────────────────────────────── */
-    .chart-btns { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-
-    .chart-btn {
-      background: var(--bg3);
-      border: 1px solid var(--border-med);
-      border-radius: 4px;
-      color: var(--text2);
-      padding: 4px 13px;
-      font-size: 12px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      cursor: pointer;
-      transition: all 0.15s;
-      font-weight: 500;
-    }
-
-    .chart-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(26,86,160,0.06); }
-    .chart-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(26,86,160,0.09); }
-
-    /* ── CHART AREA ────────────────────────────────── */
-    .chart-area { display: none; margin-top: 14px; }
-    .chart-area.visible { display: block; }
-    .chart-area canvas { max-width: 100%; border-radius: 8px; }
-
-    .heatmap-legend {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 11px;
-      color: var(--text2);
-      margin-bottom: 8px;
-    }
-
-    .legend-bar {
-      flex: 1;
-      height: 10px;
-      border-radius: 3px;
-      background: linear-gradient(to right, #30123b, #3d449a, #4576c5, #3ba5d6, #26cad7, #35e17e, #91f141, #e3e329, #f89019, #e64a12, #7a0403);
-    }
-
-    .map-div {
-      height: 420px;
-      border-radius: 10px;
-      overflow: hidden;
-      border: 1px solid var(--border);
-    }
-
-    /* ── TOOL LOG ──────────────────────────────────── */
-    .tool-log { margin-top: 14px; }
-
-    .tool-log > summary {
-      font-size: 11px;
-      color: var(--text3);
-      cursor: pointer;
-      user-select: none;
-      list-style: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 3px 0;
-      transition: color 0.15s;
-    }
-
-    .tool-log > summary::-webkit-details-marker { display: none; }
-
-    .tool-log > summary::before {
-      content: "▶";
-      font-size: 7px;
-      transition: transform 0.2s;
-    }
-
-    .tool-log[open] > summary::before { transform: rotate(90deg); }
-    .tool-log > summary:hover { color: var(--text2); }
-
-    .tool-log-content {
-      margin-top: 8px;
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 12px 14px;
-      font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
-      font-size: 11px;
-      color: var(--text2);
-      white-space: pre-wrap;
-      line-height: 1.75;
-      max-height: 280px;
-      overflow-y: auto;
-    }
-
-    .tool-log-content::-webkit-scrollbar { width: 3px; }
-    .tool-log-content::-webkit-scrollbar-thumb { background: var(--border); }
-
-    .log-call   { color: #1a56a0; font-weight: 600; }
-    .log-result { color: #1a7a3c; }
-    .log-args   { color: var(--text3); }
-
-    /* ── THINKING DOTS ─────────────────────────────── */
-    .thinking { display: flex; gap: 5px; align-items: center; padding: 4px 0; }
-
-    .thinking span {
-      width: 6px; height: 6px;
-      background: var(--accent);
-      border-radius: 50%;
-      animation: blink 1.3s ease-in-out infinite;
-      opacity: 0.4;
-    }
-
-    .thinking span:nth-child(2) { animation-delay: 0.18s; }
-    .thinking span:nth-child(3) { animation-delay: 0.36s; }
-
-    @keyframes blink {
-      0%, 100% { opacity: 0.2; transform: scale(0.75); }
-      50%       { opacity: 1;   transform: scale(1); }
-    }
-
-    /* ── INPUT AREA ────────────────────────────────── */
-    #input-area {
-      flex-shrink: 0;
-      padding: 12px 28px 18px;
-      background: var(--bg);
-      border-top: 1px solid var(--border);
-    }
-
-    #error-msg { font-size: 12px; color: #c0392b; margin-bottom: 8px; min-height: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-
-    #input-wrapper {
-      display: flex;
-      align-items: flex-end;
-      gap: 10px;
-      background: var(--bg);
-      border: 1px solid var(--border-med);
-      border-radius: 6px;
-      padding: 10px 12px 10px 16px;
-      transition: border-color 0.2s;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-    }
-
-    #input-wrapper:focus-within { border-color: rgba(26,86,160,0.5); }
-
-    #input {
-      flex: 1;
-      background: transparent;
-      border: none;
-      outline: none;
-      resize: none;
-      color: var(--text);
-      font-family: inherit;
-      font-size: 14px;
-      line-height: 1.55;
-      height: 22px;
-      max-height: 130px;
-      overflow-y: auto;
-    }
-
-    #input::placeholder { color: var(--text3); }
-    #input::-webkit-scrollbar { width: 3px; }
-    #input::-webkit-scrollbar-thumb { background: var(--border); }
-
-    #submit-btn {
-      width: 30px; height: 30px;
-      border-radius: 5px;
-      background: var(--accent-dim);
-      border: none;
+      background: var(--accent-gradient);
+      padding: 10px 18px;
+      border-radius: 18px 18px 4px 18px;
       color: white;
-      font-size: 15px;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-      transition: background 0.15s, opacity 0.15s;
-      line-height: 1;
+      max-width: 90%;
+      word-break: break-word;
     }
 
-    #submit-btn:hover:not(:disabled) { background: #153f73; }
-    #submit-btn:disabled { background: var(--bg4); color: var(--text3); cursor: not-allowed; }
+    .assistant-text { line-height: 1.7; max-width: 320px; color: var(--text); font-size: 14px; }
 
-    #input-hint { margin-top: 7px; font-size: 11px; color: var(--text3); text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    #input-area { padding: 16px; border-top: 1px solid var(--border); }
+    #input {
+      width: 100%; padding: 12px 14px; border: 2px solid #eef2f5;
+      border-radius: 12px; resize: none; font-size: 14px; outline: none;
+      transition: border-color 0.2s; font-family: inherit;
+    }
+    #input:focus { border-color: var(--accent); }
+
+    /* ── DASHBOARD PANEL ─────────────────────────────── */
+    #dashboard-panel { flex: 1; overflow-y: auto; }
+
+    .section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .section:last-child { border-bottom: none; }
+
+    .section-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+    }
+
+    /* ── MAP ─────────────────────────────────────────── */
+    #map-section { padding: 0; flex-shrink: 0; }
+    #map { height: 380px; border-radius: var(--radius) var(--radius) 0 0; }
+
+    /* ── CONTROLS ────────────────────────────────────── */
+    #controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+
+    .ctrl-group { display: flex; flex-direction: column; gap: 4px; }
+    .ctrl-group label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+    select, input[type="date"] {
+      padding: 7px 10px; border: 1.5px solid #dde3ea; border-radius: 8px;
+      font-size: 13px; outline: none; background: white; color: var(--text);
+      transition: border-color 0.2s; font-family: inherit;
+    }
+    select:focus, input[type="date"]:focus { border-color: var(--accent); }
+
+    #load-btn {
+      padding: 8px 20px; background: var(--accent-gradient); color: white;
+      border: none; border-radius: 8px; font-weight: 600; font-size: 13px;
+      cursor: pointer; transition: opacity 0.2s; white-space: nowrap;
+    }
+    #load-btn:hover { opacity: 0.9; }
+    #load-btn:disabled { opacity: 0.5; cursor: default; }
+
+    #region-hint {
+      font-size: 12px; color: var(--muted); font-style: italic;
+      display: flex; align-items: center; gap: 6px;
+    }
+
+    /* ── STATS CARD ──────────────────────────────────── */
+    #stats-section { display: none; }
+    #stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .stat-cell { text-align: center; }
+    .stat-value { font-size: 20px; font-weight: 700; color: var(--accent); }
+    .stat-name  { font-size: 11px; color: var(--muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-meta  { font-size: 11px; color: var(--muted); margin-top: 8px; }
+
+    /* ── TIME SERIES ─────────────────────────────────── */
+    #chart-section { display: none; }
+    #chart-wrap { position: relative; height: 220px; }
+
+    /* ── WELCOME ─────────────────────────────────────── */
+    #welcome { text-align: center; margin-top: 48px; }
+    #welcome h1 { font-size: 2.2rem; letter-spacing: -1px; color: var(--accent); }
+    #welcome p { color: var(--muted); margin-bottom: 20px; font-size: 14px; }
+    #welcome-chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+    .welcome-chip {
+      background: white; border: 1px solid var(--border); border-radius: 8px;
+      padding: 7px 14px; font-size: 12px; cursor: pointer; color: var(--muted);
+      transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+    .welcome-chip:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+
+    /* ── SPINNER ─────────────────────────────────────── */
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid rgba(74,144,226,0.3); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .fade-in { animation: fadeIn 0.4s; }
   </style>
 </head>
 <body>
 
 <div id="app">
 
-  <!-- ── SIDEBAR ── -->
-  <aside id="sidebar">
-    <div id="brand">
-      <div id="brand-name">URSA</div>
-      <div id="brand-sub">Universal Rasterized Science Agent</div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-label">Model Domain</div>
-      <div id="coverage-map"></div>
-    </div>
-
-    <div class="sidebar-section" id="selection-section">
-      <div class="sidebar-label">Active Selection</div>
-      <div id="selection-info"></div>
-    </div>
-  </aside>
-
-  <!-- ── MAIN ── -->
-  <main id="main">
+  <!-- ── CHAT PANEL ──────────────────────────────────────── -->
+  <main id="chat-panel" class="panel">
     <div id="chat-thread">
       <div id="welcome">
-        <div id="welcome-title">URSA</div>
-        <div id="welcome-sub">Biscayne &amp; Southern Everglades Coastal Transport</div>
-        <div id="welcome-hint">Ask questions about the BISECT hydrological model or explore South Florida salinity data from the baseline scenario.</div>
-        <div id="welcome-chips">
-          <div class="welcome-chip" onclick="useChip(this)">Show a spatial salinity map</div>
-          <div class="welcome-chip" onclick="useChip(this)">What is the BISECT model?</div>
-          <div class="welcome-chip" onclick="useChip(this)">Show salinity at Biscayne Bay over time</div>
-          <div class="welcome-chip" onclick="useChip(this)">What areas have the highest salinity?</div>
-        </div>
+        <h1>URSA</h1>
+        <p>Universal Rasterized Science Agent</p>
+        <div id="welcome-chips"></div>
       </div>
     </div>
-
     <div id="input-area">
-      <div id="error-msg"></div>
-      <div id="input-wrapper">
-        <textarea id="input" placeholder="Ask about the BISECT model or South Florida salinity..." rows="1"></textarea>
-        <button id="submit-btn" onclick="submitQuery()">&#x2191;</button>
-      </div>
-      <div id="input-hint">Enter to send &nbsp;&middot;&nbsp; Shift+Enter for new line</div>
+      <textarea id="input" placeholder="Ask about the selected region…" rows="2"></textarea>
     </div>
   </main>
 
+  <!-- ── DASHBOARD PANEL ─────────────────────────────────── -->
+  <div id="dashboard-panel" class="panel">
+
+    <!-- Map (always visible) -->
+    <div id="map-section" class="section">
+      <div id="map"></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="section">
+      <div class="section-label">Selection Controls</div>
+      <div id="controls">
+        <div class="ctrl-group">
+          <label>Variable</label>
+          <select id="variable-select"><option value="">Loading…</option></select>
+        </div>
+        <div class="ctrl-group">
+          <label>Start Date</label>
+          <input type="date" id="start-date">
+        </div>
+        <div class="ctrl-group">
+          <label>End Date</label>
+          <input type="date" id="end-date">
+        </div>
+        <button id="load-btn" disabled>Load Data</button>
+        <div id="region-hint">Draw a rectangle on the map to select a region</div>
+      </div>
+    </div>
+
+    <!-- Stats card -->
+    <div id="stats-section" class="section fade-in">
+      <div class="section-label" id="stats-label">Region Statistics</div>
+      <div id="stats-grid">
+        <div class="stat-cell"><div class="stat-value" id="s-mean">—</div><div class="stat-name">Mean</div></div>
+        <div class="stat-cell"><div class="stat-value" id="s-max">—</div><div class="stat-name">Max</div></div>
+        <div class="stat-cell"><div class="stat-value" id="s-min">—</div><div class="stat-name">Min</div></div>
+        <div class="stat-cell"><div class="stat-value" id="s-std">—</div><div class="stat-name">Std Dev</div></div>
+      </div>
+      <div class="stat-meta" id="stats-meta"></div>
+    </div>
+
+    <!-- Time series chart -->
+    <div id="chart-section" class="section fade-in">
+      <div class="section-label" id="chart-label">Time Series — Regional Mean</div>
+      <div id="chart-wrap"><canvas id="ts-chart"></canvas></div>
+    </div>
+
+  </div>
 </div>
 
 <script>
-  // ── State ────────────────────────────────────────────────────────
-  let conversationHistory = [];   // {role, content} pairs sent to server
-  let msgData = [];               // full message objects for local display
-  const mapInstances  = {};       // Leaflet map per message index
-  const chartInstances = {};      // Chart.js instance per message index
+// ── State ──────────────────────────────────────────────────────────────────
+let currentBbox      = null;   // {sw:[lat,lon], ne:[lat,lon]}
+let selectionContext = null;   // stats dict forwarded to /query
+let tsChart          = null;
+let heatOverlay      = null;
+let drawnItems       = null;
 
-  const chatThread = document.getElementById("chat-thread");
-  const inputEl    = document.getElementById("input");
-  const submitBtn  = document.getElementById("submit-btn");
-  const errorEl    = document.getElementById("error-msg");
-  let isThinking   = false;
+// ── Map initialisation ─────────────────────────────────────────────────────
+const map = L.map("map", { zoomControl: true });
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: "&copy; OpenStreetMap contributors"
+}).addTo(map);
 
-  // ── Coverage map ─────────────────────────────────────────────────
-  async function initCoverageMap() {
-    try {
-      const res  = await fetch("/dataset/info");
-      const info = await res.json();
-      const sw = info.lat_lon_bounds.sw;
-      const ne = info.lat_lon_bounds.ne;
-      const covMap = L.map("coverage-map", {
-        zoomControl: false, attributionControl: false,
-        dragging: false, scrollWheelZoom: false,
-        doubleClickZoom: false, touchZoom: false
-      });
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(covMap);
-      L.rectangle([sw, ne], {
-        color: "#818cf8", weight: 2,
-        fillColor: "#6366f1", fillOpacity: 0.18
-      }).addTo(covMap);
-      covMap.fitBounds([sw, ne], { padding: [18, 18] });
-    } catch (e) {
-      const el = document.getElementById("coverage-map");
-      el.style.display = "flex";
-      el.style.alignItems = "center";
-      el.style.justifyContent = "center";
-      el.style.fontSize = "11px";
-      el.style.color = "#4a5568";
-      el.textContent = "Server offline";
-    }
-  }
-  initCoverageMap();
+drawnItems = new L.FeatureGroup().addTo(map);
 
-  // ── Active selection sidebar ──────────────────────────────────────
-  function updateSelectionSidebar(si) {
-    if (!si) return;
-    const el  = document.getElementById("selection-info");
-    const sec = document.getElementById("selection-section");
+const drawControl = new L.Control.Draw({
+  draw: {
+    rectangle: { shapeOptions: { color: "#4a90e2", weight: 2 } },
+    polyline: false, polygon: false, circle: false,
+    marker: false, circlemarker: false,
+  },
+  edit: { featureGroup: drawnItems, remove: true }
+});
+map.addControl(drawControl);
 
-    const rows = [["Dims", si.dims.join(", ") || "none"]];
-    if (si.time_range) rows.push(["Time", `${si.time_range[0]} \u2192 ${si.time_range[1]}`]);
-    if (si.x_range)    rows.push(["X (m)", `${si.x_range[0].toLocaleString()} \u2013 ${si.x_range[1].toLocaleString()}`]);
-    if (si.y_range)    rows.push(["Y (m)", `${si.y_range[0].toLocaleString()} \u2013 ${si.y_range[1].toLocaleString()}`]);
-    if (si.salinity_min != null) {
-      rows.push(["Sal min", `${si.salinity_min} ppt`]);
-      rows.push(["Sal max", `${si.salinity_max} ppt`]);
-      rows.push(["Sal mean", `${si.salinity_mean} ppt`]);
-    }
-    rows.push(["Points", si.num_points.toLocaleString()]);
+map.on(L.Draw.Event.CREATED, (e) => {
+  drawnItems.clearLayers();
+  drawnItems.addLayer(e.layer);
+  const b = e.layer.getBounds();
+  currentBbox = {
+    sw: [b.getSouthWest().lat, b.getSouthWest().lng],
+    ne: [b.getNorthEast().lat, b.getNorthEast().lng],
+  };
+  document.getElementById("region-hint").textContent = "Region selected — click Load Data";
+  updateLoadBtn();
+});
 
-    el.innerHTML = rows.map(([k, v]) =>
-      `<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${v}</span></div>`
-    ).join("");
-    sec.style.display = "block";
-  }
+map.on(L.Draw.Event.DELETED, () => {
+  currentBbox = null;
+  document.getElementById("region-hint").textContent = "Draw a rectangle on the map to select a region";
+  updateLoadBtn();
+});
 
-  // ── Welcome chip shortcut ─────────────────────────────────────────
-  function useChip(el) {
-    inputEl.value = el.textContent;
-    autoResize();
+// ── Chat helpers ───────────────────────────────────────────────────────────
+const chatThread = document.getElementById("chat-thread");
+const inputEl    = document.getElementById("input");
+
+const suggestionsPool = [
+  "What does the salinity pattern here suggest?",
+  "Is this level of salinity normal for this region?",
+  "What could cause salinity to change over time here?",
+  "How does BISECT model salinity in coastal areas?",
+  "What impact could sea level rise have on this region?",
+  "Explain the key assumptions behind the BISECT model.",
+  "What does elevated salinity indicate for freshwater resources?",
+  "How were the SSP scenarios used in BISECT?",
+];
+
+function generateWelcomeChips() {
+  const container = document.getElementById("welcome-chips");
+  [...suggestionsPool].sort(() => 0.5 - Math.random()).slice(0, 4).forEach(p => {
+    const chip = document.createElement("button");
+    chip.className = "welcome-chip";
+    chip.textContent = p;
+    chip.onclick = () => { inputEl.value = p; inputEl.focus(); };
+    container.appendChild(chip);
+  });
+}
+generateWelcomeChips();
+
+function addUserMessage(text) {
+  const row = document.createElement("div");
+  row.className = "message-row";
+  row.innerHTML = `<div class="user-bubble">${escHtml(text)}</div>`;
+  chatThread.appendChild(row);
+  chatThread.scrollTop = chatThread.scrollHeight;
+}
+
+function addAssistantMessage(text) {
+  const row = document.createElement("div");
+  row.className = "message-row";
+  row.innerHTML = `<div class="assistant-text">${escHtml(text)}</div>`;
+  chatThread.appendChild(row);
+  chatThread.scrollTop = chatThread.scrollHeight;
+}
+
+function addThinkingIndicator() {
+  const row = document.createElement("div");
+  row.className = "message-row";
+  row.id = "thinking-row";
+  row.innerHTML = `<div class="assistant-text" style="color:var(--muted)"><span class="spinner"></span> Thinking…</div>`;
+  chatThread.appendChild(row);
+  chatThread.scrollTop = chatThread.scrollHeight;
+}
+
+function removeThinkingIndicator() {
+  const el = document.getElementById("thinking-row");
+  if (el) el.remove();
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// Maintain a simple history for context continuity
+const conversationHistory = [];
+
+async function submitQuery() {
+  const message = inputEl.value.trim();
+  if (!message) return;
+
+  // Hide welcome screen on first message
+  const welcome = document.getElementById("welcome");
+  if (welcome) welcome.remove();
+
+  inputEl.value = "";
+  addUserMessage(message);
+  addThinkingIndicator();
+  inputEl.disabled = true;
+
+  conversationHistory.push({ role: "user", content: message });
+
+  try {
+    const res = await fetch("/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        history: conversationHistory.slice(0, -1),
+        selectionContext,
+      }),
+    });
+    const data = await res.json();
+    removeThinkingIndicator();
+
+    const reply = data.textResponse || data.error || "No response.";
+    addAssistantMessage(reply);
+    conversationHistory.push({ role: "assistant", content: reply });
+  } catch (err) {
+    removeThinkingIndicator();
+    addAssistantMessage("Error reaching the server. Please try again.");
+  } finally {
+    inputEl.disabled = false;
     inputEl.focus();
   }
+}
 
-  // ── Add user message ──────────────────────────────────────────────
-  function addUserMessage(text) {
-    const welcome = document.getElementById("welcome");
-    if (welcome) welcome.remove();
+inputEl.addEventListener("keypress", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitQuery(); }
+});
 
-    const idx = msgData.length;
-    msgData.push({ role: "user", content: text });
+// ── Dataset info → populate controls ──────────────────────────────────────
+async function loadDatasetInfo() {
+  try {
+    const res  = await fetch("/dataset/info");
+    const info = await res.json();
 
-    const row    = document.createElement("div");
-    row.className = "message-row user-row";
-
-    const bubble  = document.createElement("div");
-    bubble.className = "user-bubble";
-    bubble.textContent = text;
-
-    row.appendChild(bubble);
-    chatThread.appendChild(row);
-    scrollBottom();
-    return idx;
-  }
-
-  // ── Thinking indicator ────────────────────────────────────────────
-  function addThinking() {
-    const row  = document.createElement("div");
-    row.id     = "thinking-row";
-    row.className = "message-row assistant-row";
-
-    const card = document.createElement("div");
-    card.className = "assistant-card";
-
-    const name = document.createElement("div");
-    name.className = "assistant-name";
-    name.textContent = "URSA";
-
-    const dots = document.createElement("div");
-    dots.className = "thinking";
-    dots.innerHTML = "<span></span><span></span><span></span>";
-
-    card.appendChild(name);
-    card.appendChild(dots);
-    row.appendChild(card);
-    chatThread.appendChild(row);
-    scrollBottom();
-  }
-
-  // ── Add assistant message ─────────────────────────────────────────
-  function addAssistantMessage(text, charts, toolLog, selectionInfo) {
-    const thinking = document.getElementById("thinking-row");
-    if (thinking) thinking.remove();
-
-    const idx = msgData.length;
-    msgData.push({ role: "assistant", content: text, charts, toolLog, selectionInfo });
-
-    const row  = document.createElement("div");
-    row.className = "message-row assistant-row";
-
-    const card = document.createElement("div");
-    card.className = "assistant-card";
-
-    // Name badge
-    const name = document.createElement("div");
-    name.className = "assistant-name";
-    name.textContent = "URSA";
-    card.appendChild(name);
-
-    // Response text
-    const textEl = document.createElement("div");
-    textEl.className = "assistant-text";
-    textEl.textContent = text;
-    card.appendChild(textEl);
-
-    // Chart buttons
-    const chartTypes = Object.keys(charts || {});
-    if (chartTypes.length > 0) {
-      const btns = document.createElement("div");
-      btns.className = "chart-btns";
-      chartTypes.forEach(type => {
-        const btn = document.createElement("button");
-        btn.className = "chart-btn";
-        btn.textContent = type === "line" ? "Line Chart" : type === "heatmap" ? "Heatmap" : type;
-        btn.onclick = () => renderChartInMessage(idx, type, charts[type], btn, btns);
-        btns.appendChild(btn);
-      });
-      card.appendChild(btns);
-    }
-
-    // Chart render area (per-message)
-    const chartArea = document.createElement("div");
-    chartArea.className = "chart-area";
-    chartArea.id = `chart-area-${idx}`;
-    card.appendChild(chartArea);
-
-    // Tool log
-    const logDetails = document.createElement("details");
-    logDetails.className = "tool-log";
-
-    const summary = document.createElement("summary");
-    const callCount = (toolLog || []).filter(e => e.type === "call").length;
-    summary.textContent = callCount > 0 ? `${callCount} tool call${callCount !== 1 ? "s" : ""}` : "No tools called";
-    logDetails.appendChild(summary);
-
-    const logContent = document.createElement("div");
-    logContent.className = "tool-log-content";
-
-    if (toolLog && toolLog.length > 0) {
-      const frag = document.createDocumentFragment();
-      toolLog.forEach((entry, i) => {
-        if (i > 0) {
-          const spacer = document.createTextNode("\n\n");
-          frag.appendChild(spacer);
-        }
-        if (entry.type === "call") {
-          const callLine = document.createElement("span");
-          callLine.className = "log-call";
-          callLine.textContent = `[CALL] ${entry.tool}`;
-          frag.appendChild(callLine);
-          const argsLine = document.createElement("span");
-          argsLine.className = "log-args";
-          argsLine.textContent = "\n  " + JSON.stringify(entry.args, null, 2).replace(/\n/g, "\n  ");
-          frag.appendChild(argsLine);
-        } else {
-          const resultLine = document.createElement("span");
-          resultLine.className = "log-result";
-          resultLine.textContent = `[RESULT] ${entry.tool}`;
-          frag.appendChild(resultLine);
-          const contentLine = document.createElement("span");
-          contentLine.className = "log-args";
-          contentLine.textContent = "\n  " + entry.content;
-          frag.appendChild(contentLine);
-        }
-      });
-      logContent.appendChild(frag);
-    } else {
-      logContent.textContent = "No tools called — answered from training data.";
-    }
-
-    logDetails.appendChild(logContent);
-    card.appendChild(logDetails);
-
-    row.appendChild(card);
-    chatThread.appendChild(row);
-    scrollBottom();
-  }
-
-  // ── Render chart inside a specific message ────────────────────────
-  function renderChartInMessage(msgIdx, type, chartData, clickedBtn, btnsContainer) {
-    btnsContainer.querySelectorAll(".chart-btn").forEach(b => b.classList.remove("active"));
-    clickedBtn.classList.add("active");
-
-    const chartArea = document.getElementById(`chart-area-${msgIdx}`);
-    if (!chartArea) return;
-
-    // Clean up existing instances for this message slot
-    if (chartInstances[msgIdx]) {
-      chartInstances[msgIdx].destroy();
-      delete chartInstances[msgIdx];
-    }
-    if (mapInstances[msgIdx]) {
-      mapInstances[msgIdx].remove();
-      delete mapInstances[msgIdx];
-    }
-
-    chartArea.innerHTML = "";
-    chartArea.className = "chart-area visible";
-
-    if (type === "line") {
-      const canvas = document.createElement("canvas");
-      chartArea.appendChild(canvas);
-
-      chartInstances[msgIdx] = new Chart(canvas.getContext("2d"), {
-        type: "line",
-        data: {
-          labels: chartData.labels,
-          datasets: [{
-            label: "Salinity (g/L)",
-            data: chartData.data,
-            borderColor: "#1a56a0",
-            backgroundColor: "rgba(26,86,160,0.07)",
-            fill: true,
-            tension: 0.15,
-            pointRadius: 2,
-            spanGaps: true,
-            borderWidth: 1.5
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { labels: { color: "#4a4a4a", font: { size: 12, family: "Georgia, serif" } } }
-          },
-          scales: {
-            x: {
-              ticks: { maxTicksLimit: 12, color: "#666666", font: { size: 11 } },
-              grid:  { color: "rgba(0,0,0,0.06)" }
-            },
-            y: {
-              title: { display: true, text: "Salinity (g/L)", color: "#4a4a4a", font: { size: 12 } },
-              ticks: { color: "#666666", font: { size: 11 } },
-              grid:  { color: "rgba(0,0,0,0.06)" }
-            }
-          }
-        }
-      });
-
-    } else if (type === "heatmap") {
-      // Legend
-      const legend = document.createElement("div");
-      legend.className = "heatmap-legend";
-      legend.innerHTML = `<span>0 ppt (fresh)</span><div class="legend-bar"></div><span>${chartData.max_sal.toFixed(1)} ppt (saline)</span>`;
-      chartArea.appendChild(legend);
-
-      // Map container
-      const mapId  = `map-${msgIdx}`;
-      const mapDiv = document.createElement("div");
-      mapDiv.id    = mapId;
-      mapDiv.className = "map-div";
-      chartArea.appendChild(mapDiv);
-
-      // Defer Leaflet init until DOM is painted
-      requestAnimationFrame(() => {
-        const map = L.map(mapId);
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          attribution: "© OpenStreetMap contributors",
-          maxZoom: 19
-        }).addTo(map);
-
-        const bounds  = chartData.bounds;
-        const imgUrl  = "data:image/png;base64," + chartData.image_b64;
-        const cellM   = chartData.cell_size_m || 250;
-        const overlay = L.imageOverlay(imgUrl, bounds, { opacity: 0.85 }).addTo(map);
-
-        function updateBlur() {
-          const el = overlay.getElement();
-          if (!el) return;
-          const pxPerMeter = (256 * Math.pow(2, map.getZoom())) / 40075016;
-          const cellPx = cellM * pxPerMeter;
-          const blur = Math.min(18, Math.max(1, Math.round(cellPx * 0.4)));
-          el.style.filter = `blur(${blur}px)`;
-        }
-
-        overlay.on("add", updateBlur);
-        map.on("zoomend", updateBlur);
-        map.fitBounds(bounds);
-        mapInstances[msgIdx] = map;
-      });
-    }
-
-    scrollBottom();
-  }
-
-  // ── Submit ────────────────────────────────────────────────────────
-  async function submitQuery() {
-    const message = inputEl.value.trim();
-    if (!message || isThinking) return;
-
-    isThinking = true;
-    submitBtn.disabled = true;
-    errorEl.textContent = "";
-    inputEl.value = "";
-    autoResize();
-
-    addUserMessage(message);
-    addThinking();
-
-    try {
-      const res  = await fetch("/query", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ message, history: conversationHistory })
-      });
-
-      const data = await res.json();
-
-      if (data.error) {
-        const row = document.getElementById("thinking-row");
-        if (row) row.remove();
-        errorEl.textContent = "Error: " + data.error;
-      } else {
-        conversationHistory.push({ role: "user",      content: message });
-        conversationHistory.push({ role: "assistant", content: data.textResponse });
-        addAssistantMessage(data.textResponse, data.charts, data.toolLog, data.selectionInfo);
-        updateSelectionSidebar(data.selectionInfo);
-      }
-    } catch (err) {
-      const row = document.getElementById("thinking-row");
-      if (row) row.remove();
-      errorEl.textContent = "Could not reach server: " + err.message;
-    } finally {
-      isThinking = false;
-      submitBtn.disabled = false;
-      inputEl.focus();
-    }
-  }
-
-  // ── Textarea auto-resize ──────────────────────────────────────────
-  function autoResize() {
-    inputEl.style.height = "auto";
-    inputEl.style.height = Math.min(inputEl.scrollHeight, 130) + "px";
-  }
-
-  inputEl.addEventListener("input", autoResize);
-  inputEl.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      submitQuery();
-    }
-  });
-
-  function scrollBottom() {
-    requestAnimationFrame(() => {
-      chatThread.scrollTop = chatThread.scrollHeight;
+    // Populate variable dropdown
+    const sel = document.getElementById("variable-select");
+    sel.innerHTML = "";
+    const skip = new Set(["crs", "spatial_ref", "grid_mapping"]);
+    info.variables.filter(v => !skip.has(v)).forEach(v => {
+      const opt = document.createElement("option");
+      opt.value = opt.textContent = v;
+      sel.appendChild(opt);
     });
-  }
-</script>
 
+    // Set default time range
+    document.getElementById("start-date").value = info.time_range.start;
+    document.getElementById("end-date").value   = info.time_range.end;
+
+    // Fit map to dataset extent
+    const sw = L.latLng(info.lat_lon_bounds.sw[0], info.lat_lon_bounds.sw[1]);
+    const ne = L.latLng(info.lat_lon_bounds.ne[0], info.lat_lon_bounds.ne[1]);
+    map.fitBounds(L.latLngBounds(sw, ne));
+
+    updateLoadBtn();
+  } catch (err) {
+    console.error("Failed to load dataset info:", err);
+  }
+}
+loadDatasetInfo();
+
+// ── Load Data ──────────────────────────────────────────────────────────────
+function updateLoadBtn() {
+  const btn = document.getElementById("load-btn");
+  btn.disabled = !currentBbox;
+}
+
+document.getElementById("load-btn").addEventListener("click", async () => {
+  if (!currentBbox) return;
+
+  const variable  = document.getElementById("variable-select").value;
+  const startDate = document.getElementById("start-date").value;
+  const endDate   = document.getElementById("end-date").value;
+
+  const btn = document.getElementById("load-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Loading…';
+
+  try {
+    const res  = await fetch("/region/select", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bbox:       currentBbox,
+        time_range: [startDate, endDate],
+        variable,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Failed to load data.");
+      return;
+    }
+
+    renderHeatmap(data.heatmap);
+    renderTimeSeries(data.timeseries, variable);
+    renderStats(data.stats);
+
+    // Store for LLM context
+    selectionContext = data.stats;
+
+  } catch (err) {
+    console.error(err);
+    alert("Network error while loading data.");
+  } finally {
+    btn.disabled = !currentBbox;
+    btn.textContent = "Load Data";
+  }
+});
+
+// ── Heatmap overlay ────────────────────────────────────────────────────────
+function renderHeatmap(heatmap) {
+  if (heatOverlay) { map.removeLayer(heatOverlay); }
+  const imgUrl = "data:image/png;base64," + heatmap.image_b64;
+  heatOverlay  = L.imageOverlay(imgUrl, heatmap.bounds, { opacity: 0.8 }).addTo(map);
+  map.fitBounds(heatmap.bounds);
+}
+
+// ── Time series chart ──────────────────────────────────────────────────────
+function renderTimeSeries(ts, variable) {
+  document.getElementById("chart-section").style.display = "block";
+  document.getElementById("chart-label").textContent =
+    `Time Series — ${variable} (regional mean)`;
+
+  if (tsChart) { tsChart.destroy(); }
+  tsChart = new Chart(document.getElementById("ts-chart").getContext("2d"), {
+    type: "line",
+    data: {
+      labels: ts.labels,
+      datasets: [{
+        label: variable,
+        data: ts.data,
+        borderColor: "#4a90e2",
+        backgroundColor: "rgba(74,144,226,0.08)",
+        borderWidth: 1.5,
+        pointRadius: ts.labels.length > 200 ? 0 : 2,
+        fill: true,
+        spanGaps: true,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, font: { size: 11 } } },
+        y: { ticks: { font: { size: 11 } } },
+      },
+    },
+  });
+}
+
+// ── Stats card ─────────────────────────────────────────────────────────────
+function renderStats(stats) {
+  document.getElementById("stats-section").style.display = "block";
+  document.getElementById("stats-label").textContent =
+    `${stats.variable} — Regional Statistics`;
+
+  const fmt = v => (v === null || v === undefined) ? "N/A" : v.toFixed(3);
+  document.getElementById("s-mean").textContent = fmt(stats.mean);
+  document.getElementById("s-max").textContent  = fmt(stats.max);
+  document.getElementById("s-min").textContent  = fmt(stats.min);
+  document.getElementById("s-std").textContent  = fmt(stats.std);
+
+  document.getElementById("stats-meta").textContent =
+    `Units: ${stats.units} · Period: ${stats.time_range[0]} → ${stats.time_range[1]} · ${stats.null_pct}% no-data`;
+}
+</script>
 </body>
 </html>
