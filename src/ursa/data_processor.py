@@ -78,7 +78,7 @@ def process_region(
         t_dim: slice(time_range[0], time_range[1]),
     })
 
-    if selection.sizes.get(t_dim, 0) == 0 or selection.sizes.get(x_dim, 0) == 0:
+    if any(selection.sizes.get(dim, 0) == 0 for dim in (x_dim, y_dim, t_dim)):
         raise ValueError(
             "No data found in the selected region and time range. "
             "Try expanding your bounding box or adjusting the dates."
