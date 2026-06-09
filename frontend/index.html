@@ -264,6 +264,12 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 
 drawnItems = new L.FeatureGroup().addTo(map);
 
+L.drawLocal.edit.toolbar.buttons.edit         = "Adjust selection";
+L.drawLocal.edit.toolbar.buttons.editDisabled = "No selection to adjust";
+L.drawLocal.edit.toolbar.buttons.remove       = "Clear selection";
+L.drawLocal.edit.toolbar.buttons.removeDisabled = "No selection to clear";
+L.drawLocal.draw.toolbar.buttons.rectangle    = "Draw a selection region";
+
 const drawControl = new L.Control.Draw({
   draw: {
     rectangle: { shapeOptions: { color: "#4a90e2", weight: 2 } },
@@ -287,7 +293,11 @@ map.on(L.Draw.Event.CREATED, (e) => {
 });
 
 map.on(L.Draw.Event.DELETED, () => {
-  currentBbox = null;
+  currentBbox      = null;
+  selectionContext = null;
+  if (heatOverlay) { map.removeLayer(heatOverlay); heatOverlay = null; }
+  document.getElementById("stats-section").style.display  = "none";
+  document.getElementById("chart-section").style.display  = "none";
   document.getElementById("region-hint").textContent = "Draw a rectangle on the map to select a region";
   updateLoadBtn();
 });
