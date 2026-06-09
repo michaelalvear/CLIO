@@ -4,11 +4,9 @@ and interprets it; it no longer performs any data manipulation itself.
 """
 
 import json
-import os
 from typing import Literal, List
 
 from dotenv import load_dotenv
-import xarray as xr
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
@@ -17,14 +15,13 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
 from ursa.agent.tools import build_tools
 from ursa.agent.schemas import AgentState
-from ursa.cf_utils import dataset_prompt_block
 
 load_dotenv()
 
 # ── Tools & LLM ─────────────────────────────────────────────────────────────
 
-TOOLS = build_tools()
-_llm  = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
+TOOLS           = build_tools()
+_llm            = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
 _llm_with_tools = _llm.bind_tools(TOOLS)
 
 # ── Graph nodes ─────────────────────────────────────────────────────────────
@@ -50,14 +47,6 @@ graph.add_conditional_edges(
 )
 graph.add_edge("tool_node", "llm_call")
 agent = graph.compile()
-
-# ── Dataset (loaded once at startup, used by app.py for /region/select) ─────
-
-DS = xr.open_dataset(os.getenv("NETCDF_DATA_PATH"), chunks="auto")
-
-# Build the dataset description once at startup so the prompt always reflects
-# whatever file is configured — no BISECT-specific text anywhere below.
-_DATASET_BLOCK = dataset_prompt_block(DS)
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -86,8 +75,8 @@ Use plain text only. Do not use markdown such as **bold**, *italic*, or headers.
 """
 
 
-def _build_system_prompt(selection_context: dict | None) -> str:
-    base = _BASE_PROMPT.format(dataset_block=_DATASET_BLOCK)
+def _build_system_prompt(dataset_block: str, selection_context: dict | None) -> str:
+    base = _BASE_PROMPT.format(dataset_block=dataset_block)
     if selection_context:
         ctx_block = (
             "\n\nCURRENT DATA SELECTION (user-defined map region):\n"
@@ -107,32 +96,21 @@ def run_agent(
     user_message: str,
     history: list = None,
     selection_context: dict = None,
+    dataset_block: str = "",
 ) -> dict:
     """
     Run the interpreter agent and return {text, toolLog}.
-    selection_context: the stats dict returned by /region/select, or None.
-    history: list of {"role": "user"|"assistant", "content": str} dicts.
+    dataset_block:     CF metadata description of the active dataset (from app.py).
+    selection_context: stats dict returned by /region/select, or None.
+    history:           list of {"role": "user"|"assistant", "content": str} dicts.
     """
-    if history:
-        history_text = "\n".join(
-            f"{'User' if t['role'] == 'user' else 'Assistant'}: {t['content']}"
-            for t in history
-        )
-        full_message = (
-            f"[Previous conversation]\n{history_text}\n\n"
-            f"[Current message]\n{user_message}"
-        )
-    else:
-        full_message = user_message
+    messages = [SystemMessage(content=_build_system_prompt(dataset_block, selection_context))]
+    for turn in (history or []):
+        cls = HumanMessage if turn["role"] == "user" else AIMessage
+        messages.append(cls(content=turn["content"]))
+    messages.append(HumanMessage(content=user_message))
 
-    initial_state = {
-        "messages": [
-            SystemMessage(content=_build_system_prompt(selection_context)),
-            HumanMessage(content=full_message),
-        ]
-    }
-
-    result = agent.invoke(initial_state)
+    result = agent.invoke({"messages": messages})
 
     content = result["messages"][-1].content
     if isinstance(content, list):
@@ -160,5 +138,3 @@ def run_agent(
             })
 
     return {"text": content, "toolLog": tool_log}
-
-

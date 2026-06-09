@@ -9,15 +9,20 @@ import signal
 import traceback
 from pathlib import Path
 
+import xarray as xr
+
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-from ursa.agent.orchestration import DS, run_agent
+from ursa.agent.orchestration import run_agent
 from ursa.data_processor import process_region
-from ursa.cf_utils import detect_crs, get_cf_axes, get_transformers
+from ursa.cf_utils import detect_crs, get_cf_axes, get_transformers, dataset_prompt_block
 
 load_dotenv()
+
+DS             = xr.open_dataset(os.getenv("NETCDF_DATA_PATH"), chunks="auto")
+_DATASET_BLOCK = dataset_prompt_block(DS)
 
 app = Flask(__name__)
 CORS(app)
@@ -90,6 +95,7 @@ def query():
             user_message=body["message"],
             history=body.get("history", []),
             selection_context=body.get("selectionContext"),
+            dataset_block=_DATASET_BLOCK,
         )
         return jsonify({
             "textResponse": result["text"],

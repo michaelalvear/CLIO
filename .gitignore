@@ -24,3 +24,6 @@ build/
 # IDE Settings (PyCharm)
 .idea/
 *.iml
+
+# Claude Context
+CLAUDE.md

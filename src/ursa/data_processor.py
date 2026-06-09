@@ -9,10 +9,14 @@ import base64
 from io import BytesIO
 
 import xarray as xr
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderServiceError
 
 from ursa import config  # sets matplotlib backend to Agg before pyplot import
 import matplotlib.pyplot as plt
 from ursa.cf_utils import detect_crs, get_cf_axes, get_transformers
+
+_geolocator = Nominatim(user_agent="ursa_data_processor", timeout=5)
 
 
 def _safe_slice(coord_array, lo, hi):
@@ -20,6 +24,19 @@ def _safe_slice(coord_array, lo, hi):
     if len(coord_array) > 1 and coord_array[0] > coord_array[-1]:
         return slice(hi, lo)
     return slice(lo, hi)
+
+
+def _reverse_geocode(bbox_latlon: dict) -> str | None:
+    """Return a human-readable place name for the bbox centroid, or None on failure."""
+    sw_lat, sw_lon = bbox_latlon["sw"]
+    ne_lat, ne_lon = bbox_latlon["ne"]
+    lat = (sw_lat + ne_lat) / 2
+    lon = (sw_lon + ne_lon) / 2
+    try:
+        result = _geolocator.reverse((lat, lon), language="en")
+        return result.address if result else None
+    except (GeocoderServiceError, Exception):
+        return None
 
 
 def process_region(
@@ -87,6 +104,7 @@ def process_region(
         "max":  round(float(valid.max()),  4) if len(valid) else None,
         "min":  round(float(valid.min()),  4) if len(valid) else None,
         "std":  round(float(valid.std()),  4) if len(valid) else None,
+        "location_name": _reverse_geocode(bbox_latlon),
     }
 
     # ── Heatmap (time mean → spatial PNG) ─────────────────────────────────────
