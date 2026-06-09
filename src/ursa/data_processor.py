@@ -47,17 +47,40 @@ def _trend_per_year(ts_values: np.ndarray, t_values) -> float | None:
     return round(float(slope), 6)
 
 
-def _reverse_geocode(bbox_latlon: dict) -> str | None:
-    """Return a human-readable place name for the bbox centroid, or None on failure."""
+def _reverse_geocode(bbox_latlon: dict) -> list[str]:
+    """
+    Reverse geocode five points (four corners + centroid) of the bbox and return
+    a deduplicated list of unique place names. Nominatim requires ≤1 req/sec so
+    a 1-second pause is inserted between calls.
+    """
+    import time
     sw_lat, sw_lon = bbox_latlon["sw"]
     ne_lat, ne_lon = bbox_latlon["ne"]
-    lat = (sw_lat + ne_lat) / 2
-    lon = (sw_lon + ne_lon) / 2
-    try:
-        result = _geolocator.reverse((lat, lon), language="en")
-        return result.address if result else None
-    except (GeocoderServiceError, Exception):
-        return None
+    mid_lat = (sw_lat + ne_lat) / 2
+    mid_lon = (sw_lon + ne_lon) / 2
+
+    points = [
+        (sw_lat,  sw_lon),   # SW corner
+        (sw_lat,  ne_lon),   # SE corner
+        (ne_lat,  sw_lon),   # NW corner
+        (ne_lat,  ne_lon),   # NE corner
+        (mid_lat, mid_lon),  # centroid
+    ]
+
+    seen   = set()
+    names  = []
+    for i, (lat, lon) in enumerate(points):
+        if i > 0:
+            time.sleep(1.1)
+        try:
+            result = _geolocator.reverse((lat, lon), language="en")
+            if result and result.address not in seen:
+                seen.add(result.address)
+                names.append(result.address)
+        except (GeocoderServiceError, Exception):
+            pass
+
+    return names
 
 
 def process_region(
@@ -150,7 +173,7 @@ def process_region(
         "std":               round(float(valid.std()),  4) if len(valid) else None,
         "trend_per_year":    trend,
         "max_value_location": max_location,
-        "location_name":     _reverse_geocode(bbox_latlon),
+        "location_names":    _reverse_geocode(bbox_latlon),
     }
 
     # ── Heatmap (time mean → spatial PNG) ─────────────────────────────────────
