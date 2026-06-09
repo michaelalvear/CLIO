@@ -344,28 +344,39 @@ function addAssistantMessage(text, toolLog) {
     const entries = ragCalls.map((call, i) => {
       const query   = call.args?.query || call.args?.input || JSON.stringify(call.args);
       const content = results[i]?.content || "";
-      const pages   = [...new Set(
-        [...content.matchAll(/PAGE:\s*([^\n]+)/g)].map(m => m[1].trim())
-      )];
-      return { query, pages };
+
+      // Split into individual chunks and extract source + page from each
+      const chunks = content.split("--- DOCUMENT CHUNK ---").filter(c => c.trim());
+      const bySource = {};
+      chunks.forEach(chunk => {
+        const srcMatch  = chunk.match(/SOURCE:\s*([^\n]+)/);
+        const pageMatch = chunk.match(/PAGE:\s*([^\n]+)/);
+        const src  = srcMatch  ? srcMatch[1].trim()  : "Unknown source";
+        const page = pageMatch ? pageMatch[1].trim() : "?";
+        if (!bySource[src]) bySource[src] = [];
+        if (!bySource[src].includes(page)) bySource[src].push(page);
+      });
+
+      return { query, bySource };
     });
 
     const details = document.createElement("details");
     const chunkCount = results.reduce((n, r) => {
-      return n + ([...r.content.matchAll(/SOURCE PAGE:/g)].length || 1);
+      return n + ([...r.content.matchAll(/--- DOCUMENT CHUNK ---/g)].length || 1);
     }, 0);
     details.innerHTML = `<summary>Domain knowledge base — ${chunkCount} chunk${chunkCount !== 1 ? "s" : ""} retrieved</summary>`;
 
     const body = document.createElement("div");
     body.className = "tool-log-body";
-    entries.forEach(({ query, pages }) => {
+    entries.forEach(({ query, bySource }) => {
       const entry = document.createElement("div");
       entry.className = "tool-log-entry";
+      const sourceLines = Object.entries(bySource)
+        .map(([src, pages]) => `<div class="tool-log-pages">${escHtml(src)} — p. ${pages.map(escHtml).join(", ")}</div>`)
+        .join("");
       entry.innerHTML =
         `<div class="tool-log-query">Query: "${escHtml(query)}"</div>` +
-        (pages.length
-          ? `<div class="tool-log-pages">Pages: ${pages.map(escHtml).join(", ")}</div>`
-          : `<div class="tool-log-pages">Pages: not parsed</div>`);
+        (sourceLines || `<div class="tool-log-pages">Sources: not parsed</div>`);
       body.appendChild(entry);
     });
     details.appendChild(body);

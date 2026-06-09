@@ -134,7 +134,7 @@ def run_agent(
             tool_log.append({
                 "type":    "result",
                 "tool":    getattr(msg, "name", "unknown"),
-                "content": str(tool_content)[:500],
+                "content": str(tool_content),
             })
 
     return {"text": content, "toolLog": tool_log}
