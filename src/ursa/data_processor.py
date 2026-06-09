@@ -26,6 +26,27 @@ def _safe_slice(coord_array, lo, hi):
     return slice(lo, hi)
 
 
+def _trend_per_year(ts_values: np.ndarray, t_values) -> float | None:
+    """
+    Fit a linear trend to a time series and return the slope in units per year.
+    Handles both numpy datetime64 and cftime coordinate arrays.
+    Returns None if there are fewer than 2 valid points.
+    """
+    y = ts_values.flatten().astype(float)
+    valid = ~np.isnan(y)
+    if valid.sum() < 2:
+        return None
+    try:
+        days = (t_values - t_values[0]) / np.timedelta64(1, "D")
+    except TypeError:
+        # cftime objects
+        ord0 = t_values[0].toordinal()
+        days = np.array([t.toordinal() - ord0 for t in t_values], dtype=float)
+    x = np.asarray(days, dtype=float) / 365.25
+    slope, _ = np.polyfit(x[valid], y[valid], 1)
+    return round(float(slope), 6)
+
+
 def _reverse_geocode(bbox_latlon: dict) -> str | None:
     """Return a human-readable place name for the bbox centroid, or None on failure."""
     sw_lat, sw_lon = bbox_latlon["sw"]
@@ -86,30 +107,53 @@ def process_region(
 
     da = selection[variable]
 
+    # ── Time-mean spatial grid (used for both stats and heatmap) ──────────────
+    spatial = da.mean(dim=t_dim)
+
     # ── Statistics ────────────────────────────────────────────────────────────
     flat  = da.values.flatten()
     valid = flat[~np.isnan(flat)]
+
+    # Trend: slope of the spatially-averaged time series in units per year
+    ts_raw   = da.mean(dim=[x_dim, y_dim])
+    t_coords = selection[t_dim].values
+    trend    = _trend_per_year(ts_raw.values, t_coords)
+
+    # Location of maximum value in the time-mean grid
+    spatial_vals = spatial.values
+    max_location = None
+    if not np.all(np.isnan(spatial_vals)):
+        flat_idx   = int(np.nanargmax(spatial_vals))
+        dim_order  = spatial.dims
+        idx_map    = dict(zip(dim_order, np.unravel_index(flat_idx, spatial_vals.shape)))
+        max_x      = float(spatial[x_dim].values[idx_map[x_dim]])
+        max_y      = float(spatial[y_dim].values[idx_map[y_dim]])
+        if to_latlon is None:
+            max_lat, max_lon = max_y, max_x
+        else:
+            max_lon, max_lat = to_latlon.transform(max_x, max_y)
+        max_location = {"lat": round(max_lat, 5), "lon": round(max_lon, 5)}
 
     stats = {
         "variable":    variable,
         "long_name":   str(da.attrs.get("long_name", variable)),
         "units":       str(da.attrs.get("units", "unknown")),
         "time_range":  [
-            str(selection[t_dim].values[0])[:10],
-            str(selection[t_dim].values[-1])[:10],
+            str(t_coords[0])[:10],
+            str(t_coords[-1])[:10],
         ],
         "point_count": int(da.size),
         "null_pct":    round(float(da.isnull().mean() * 100), 1),
-        "mean": round(float(valid.mean()), 4) if len(valid) else None,
-        "max":  round(float(valid.max()),  4) if len(valid) else None,
-        "min":  round(float(valid.min()),  4) if len(valid) else None,
-        "std":  round(float(valid.std()),  4) if len(valid) else None,
-        "location_name": _reverse_geocode(bbox_latlon),
+        "mean":              round(float(valid.mean()), 4) if len(valid) else None,
+        "max":               round(float(valid.max()),  4) if len(valid) else None,
+        "min":               round(float(valid.min()),  4) if len(valid) else None,
+        "std":               round(float(valid.std()),  4) if len(valid) else None,
+        "trend_per_year":    trend,
+        "max_value_location": max_location,
+        "location_name":     _reverse_geocode(bbox_latlon),
     }
 
     # ── Heatmap (time mean → spatial PNG) ─────────────────────────────────────
-    spatial = da.mean(dim=t_dim)
-
     # Ensure north-up rendering (y must decrease top→bottom in the image array)
     y_coord_vals = spatial[y_dim].values
     if y_coord_vals[0] < y_coord_vals[-1]:
@@ -146,9 +190,8 @@ def process_region(
     }
 
     # ── Time series (spatial mean over selected region) ────────────────────────
-    ts     = da.mean(dim=[x_dim, y_dim])
-    labels = [str(t)[:10] for t in selection[t_dim].values]
-    values = [None if np.isnan(v) else round(float(v), 4) for v in ts.values.flatten()]
+    labels = [str(t)[:10] for t in t_coords]
+    values = [None if np.isnan(v) else round(float(v), 4) for v in ts_raw.values.flatten()]
 
     timeseries = {"labels": labels, "data": values}
 

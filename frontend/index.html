@@ -233,6 +233,8 @@
         <div class="stat-cell"><div class="stat-value" id="s-max">—</div><div class="stat-name">Max</div></div>
         <div class="stat-cell"><div class="stat-value" id="s-min">—</div><div class="stat-name">Min</div></div>
         <div class="stat-cell"><div class="stat-value" id="s-std">—</div><div class="stat-name">Std Dev</div></div>
+        <div class="stat-cell"><div class="stat-value" id="s-trend">—</div><div class="stat-name">Trend / yr</div></div>
+        <div class="stat-cell" style="grid-column: span 3;"><div class="stat-value" id="s-maxloc" style="font-size:13px;">—</div><div class="stat-name">Location of Max</div></div>
       </div>
       <div class="stat-meta" id="stats-meta"></div>
     </div>
@@ -574,11 +576,23 @@ function renderStats(stats) {
   document.getElementById("stats-label").textContent =
     `${stats.variable} — Regional Statistics`;
 
-  const fmt = v => (v === null || v === undefined) ? "N/A" : v.toFixed(3);
-  document.getElementById("s-mean").textContent = fmt(stats.mean);
-  document.getElementById("s-max").textContent  = fmt(stats.max);
-  document.getElementById("s-min").textContent  = fmt(stats.min);
-  document.getElementById("s-std").textContent  = fmt(stats.std);
+  const fmt  = v => (v === null || v === undefined) ? "N/A" : v.toFixed(3);
+  const fmtT = v => {
+    if (v === null || v === undefined) return "N/A";
+    const sign = v >= 0 ? "+" : "";
+    return `${sign}${v.toFixed(4)}`;
+  };
+
+  document.getElementById("s-mean").textContent  = fmt(stats.mean);
+  document.getElementById("s-max").textContent   = fmt(stats.max);
+  document.getElementById("s-min").textContent   = fmt(stats.min);
+  document.getElementById("s-std").textContent   = fmt(stats.std);
+  document.getElementById("s-trend").textContent = fmtT(stats.trend_per_year);
+
+  const loc = stats.max_value_location;
+  document.getElementById("s-maxloc").textContent = loc
+    ? `${loc.lat.toFixed(4)}° N, ${Math.abs(loc.lon).toFixed(4)}° ${loc.lon < 0 ? "W" : "E"}`
+    : "N/A";
 
   document.getElementById("stats-meta").textContent =
     `Units: ${stats.units} · Period: ${stats.time_range[0]} → ${stats.time_range[1]} · ${stats.null_pct}% no-data`;
