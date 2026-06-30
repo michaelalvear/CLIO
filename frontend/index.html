@@ -292,6 +292,18 @@ map.on(L.Draw.Event.CREATED, (e) => {
   updateLoadBtn();
 });
 
+map.on(L.Draw.Event.EDITED, (e) => {
+  e.layers.eachLayer(layer => {
+    const b = layer.getBounds();
+    currentBbox = {
+      sw: [b.getSouthWest().lat, b.getSouthWest().lng],
+      ne: [b.getNorthEast().lat, b.getNorthEast().lng],
+    };
+  });
+  document.getElementById("region-hint").textContent = "Region updated — click Load Data";
+  updateLoadBtn();
+});
+
 map.on(L.Draw.Event.DELETED, () => {
   currentBbox      = null;
   selectionContext = null;
