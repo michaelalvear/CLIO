@@ -21,8 +21,34 @@ from ursa.cf_utils import detect_crs, get_cf_axes, get_transformers, dataset_pro
 
 load_dotenv()
 
-DS             = xr.open_dataset(os.getenv("NETCDF_DATA_PATH"), chunks="auto")
-_DATASET_BLOCK = dataset_prompt_block(DS)
+DS = xr.open_dataset(os.getenv("NETCDF_DATA_PATH"), chunks="auto")
+
+
+def _compute_lat_lon_bounds(dataset: xr.Dataset) -> dict:
+    axes                = get_cf_axes(dataset)
+    x_dim, y_dim         = axes["x_dim"], axes["y_dim"]
+    to_latlon, _         = get_transformers(detect_crs(dataset))
+
+    x_min = float(dataset[x_dim].min())
+    x_max = float(dataset[x_dim].max())
+    y_min = float(dataset[y_dim].min())
+    y_max = float(dataset[y_dim].max())
+
+    if to_latlon is None:
+        lat_sw, lon_sw = y_min, x_min
+        lat_ne, lon_ne = y_max, x_max
+    else:
+        lon_sw, lat_sw = to_latlon.transform(x_min, y_min)
+        lon_ne, lat_ne = to_latlon.transform(x_max, y_max)
+
+    return {
+        "sw": [round(lat_sw, 5), round(lon_sw, 5)],
+        "ne": [round(lat_ne, 5), round(lon_ne, 5)],
+    }
+
+
+_LAT_LON_BOUNDS = _compute_lat_lon_bounds(DS)
+_DATASET_BLOCK  = dataset_prompt_block(DS, lat_lon_bounds=_LAT_LON_BOUNDS)
 
 app = Flask(__name__)
 CORS(app)
@@ -109,22 +135,8 @@ def query():
 
 @app.route("/dataset/info", methods=["GET"])
 def dataset_info():
-    axes                   = get_cf_axes(DS)
-    x_dim, y_dim, t_dim    = axes["x_dim"], axes["y_dim"], axes["t_dim"]
-    crs                    = detect_crs(DS)
-    to_latlon, _           = get_transformers(crs)
-
-    x_min = float(DS[x_dim].min())
-    x_max = float(DS[x_dim].max())
-    y_min = float(DS[y_dim].min())
-    y_max = float(DS[y_dim].max())
-
-    if to_latlon is None:
-        lat_sw, lon_sw = y_min, x_min
-        lat_ne, lon_ne = y_max, x_max
-    else:
-        lon_sw, lat_sw = to_latlon.transform(x_min, y_min)
-        lon_ne, lat_ne = to_latlon.transform(x_max, y_max)
+    axes                = get_cf_axes(DS)
+    t_dim               = axes["t_dim"]
 
     skip = {"crs", "spatial_ref", "grid_mapping"}
     variables = [v for v in DS.data_vars if v not in skip
@@ -137,10 +149,7 @@ def dataset_info():
             "start": str(DS[t_dim].values[0])[:10],
             "end":   str(DS[t_dim].values[-1])[:10],
         },
-        "lat_lon_bounds": {
-            "sw": [round(lat_sw, 5), round(lon_sw, 5)],
-            "ne": [round(lat_ne, 5), round(lon_ne, 5)],
-        },
+        "lat_lon_bounds": _LAT_LON_BOUNDS,
     }), 200
 
 

@@ -148,10 +148,15 @@ def get_transformers(dataset_crs: str):
 
 # ── Dataset metadata for the agent system prompt ───────────────────────────
 
-def dataset_prompt_block(dataset: xr.Dataset) -> str:
+def dataset_prompt_block(dataset: xr.Dataset, lat_lon_bounds: dict | None = None) -> str:
     """
     Format CF global attributes and variable metadata into a plain-text block
     suitable for injection into the agent system prompt.
+
+    lat_lon_bounds: optional {"sw": [lat, lon], "ne": [lat, lon]} covering the
+    full dataset extent (as computed for the frontend map). When provided, a
+    "Spatial extent" line is added so the agent has geographic context for the
+    dataset as a whole, not just whatever region the user has selected.
     """
     a = dataset.attrs
     lines = ["DATASET INFORMATION:"]
@@ -201,5 +206,14 @@ def dataset_prompt_block(dataset: xr.Dataset) -> str:
         )
     except Exception:
         pass
+
+    # Spatial extent
+    if lat_lon_bounds:
+        sw_lat, sw_lon = lat_lon_bounds["sw"]
+        ne_lat, ne_lon = lat_lon_bounds["ne"]
+        lines.append(
+            f"Spatial extent: latitude {sw_lat} to {ne_lat}, "
+            f"longitude {sw_lon} to {ne_lon} (decimal degrees, full dataset domain)"
+        )
 
     return "\n".join(lines)

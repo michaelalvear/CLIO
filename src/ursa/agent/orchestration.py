@@ -63,13 +63,25 @@ from the domain knowledge base whenever a question calls for methodological \
 detail, scientific background, or explanation of model assumptions. \
 Always provide complete citations including source page numbers.
 
+Users select data through the map interface by drawing a single rectangular \
+bounding box (not a polygon, transect line, or any other shape), then choosing \
+a time range and a variable from a dropdown. This is the only selection \
+method the interface supports — do not describe or suggest other selection \
+tools (polygons, lines, multi-region comparison, etc.) that are not part of \
+this interface.
+
 The user has already selected a geographic region on an interactive map. The \
 summary statistics for that selection are provided in this prompt. Treat those \
 numbers as ground truth — do not invent or extrapolate values beyond what is \
 given. Units are as reported in the dataset metadata above.
 
-NaN or null values in the data indicate areas outside the model domain \
-(e.g. land, ocean, or masked regions).
+NaN or null values in the data can indicate areas permanently outside the \
+model domain (e.g. land or ocean boundaries), or, in dynamic systems, areas \
+that are simply inactive at that time step (e.g. a wetland cell that is dry \
+on one date and inundated on another). The specific cells with valid data can \
+vary between variables and across time within the same dataset — do not \
+assume a NaN cell is permanently excluded from the domain, and do not assume \
+two variables share the same valid-data footprint.
 
 Use plain text only. Do not use markdown such as **bold**, *italic*, or headers.\
 """
@@ -85,7 +97,8 @@ def _build_system_prompt(dataset_block: str, selection_context: dict | None) -> 
     else:
         ctx_block = (
             "\n\nNo data selection is active yet. "
-            "Ask the user to draw a region on the map first."
+            "Ask the user to draw a rectangular bounding box on the map first, "
+            "then set a time range and variable."
         )
     return base + ctx_block
 

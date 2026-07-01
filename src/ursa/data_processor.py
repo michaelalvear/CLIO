@@ -11,12 +11,22 @@ from io import BytesIO
 import xarray as xr
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderServiceError
+from pyproj import Geod
 
 from ursa import config  # sets matplotlib backend to Agg before pyplot import
 import matplotlib.pyplot as plt
 from ursa.cf_utils import detect_crs, get_cf_axes, get_transformers
 
 _geolocator = Nominatim(user_agent="ursa_data_processor", timeout=5)
+_geod       = Geod(ellps="WGS84")
+
+
+def _bbox_area_km2(lat_sw: float, lon_sw: float, lat_ne: float, lon_ne: float) -> float:
+    """Geodesic area (WGS84) of the lat/lon rectangle defined by its corners."""
+    lons = [lon_sw, lon_ne, lon_ne, lon_sw]
+    lats = [lat_sw, lat_sw, lat_ne, lat_ne]
+    area_m2, _ = _geod.polygon_area_perimeter(lons, lats)
+    return round(abs(area_m2) / 1e6, 3)
 
 
 def _safe_slice(coord_array, lo, hi):
@@ -130,6 +140,26 @@ def process_region(
 
     da = selection[variable]
 
+    # ── Actual (grid-snapped) extent of the selection, in lat/lon ──────────────
+    # Used for both the stats block (agent-facing) and the heatmap overlay
+    # (map-facing) — computed once since .sel() may include a slightly
+    # different footprint than the user's drawn rectangle.
+    sel_x = selection[x_dim].values
+    sel_y = selection[y_dim].values
+
+    if to_latlon is None:
+        lat_sw, lon_sw = float(sel_y.min()), float(sel_x.min())
+        lat_ne, lon_ne = float(sel_y.max()), float(sel_x.max())
+    else:
+        lon_sw, lat_sw = to_latlon.transform(float(sel_x.min()), float(sel_y.min()))
+        lon_ne, lat_ne = to_latlon.transform(float(sel_x.max()), float(sel_y.max()))
+
+    selection_extent = {
+        "sw": [round(lat_sw, 5), round(lon_sw, 5)],
+        "ne": [round(lat_ne, 5), round(lon_ne, 5)],
+    }
+    area_km2 = _bbox_area_km2(lat_sw, lon_sw, lat_ne, lon_ne)
+
     # ── Time-mean spatial grid (used for both stats and heatmap) ──────────────
     spatial = da.mean(dim=t_dim)
 
@@ -174,6 +204,8 @@ def process_region(
         "trend_per_year":    trend,
         "max_value_location": max_location,
         "location_names":    _reverse_geocode(bbox_latlon),
+        "selection_extent":  selection_extent,
+        "area_km2":          area_km2,
     }
 
     # ── Heatmap (time mean → spatial PNG) ─────────────────────────────────────
@@ -195,20 +227,9 @@ def process_region(
     buf.seek(0)
     img_b64 = base64.b64encode(buf.read()).decode("utf-8")
 
-    sel_x = selection[x_dim].values
-    sel_y = selection[y_dim].values
-
-    if to_latlon is None:
-        lat_sw, lon_sw = float(sel_y.min()), float(sel_x.min())
-        lat_ne, lon_ne = float(sel_y.max()), float(sel_x.max())
-    else:
-        lon_sw, lat_sw = to_latlon.transform(float(sel_x.min()), float(sel_y.min()))
-        lon_ne, lat_ne = to_latlon.transform(float(sel_x.max()), float(sel_y.max()))
-
     heatmap = {
         "image_b64": img_b64,
-        "bounds":    [[round(lat_sw, 5), round(lon_sw, 5)],
-                      [round(lat_ne, 5), round(lon_ne, 5)]],
+        "bounds":    [selection_extent["sw"], selection_extent["ne"]],
         "max_val":   round(max_val, 4),
     }
 
