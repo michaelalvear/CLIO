@@ -13,8 +13,8 @@ from langgraph.prebuilt import ToolNode
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
-from ursa.agent.tools import build_tools
-from ursa.agent.schemas import AgentState
+from clio.agent.tools import build_tools
+from clio.agent.schemas import AgentState
 
 load_dotenv()
 
@@ -51,10 +51,10 @@ agent = graph.compile()
 # ── System prompt ─────────────────────────────────────────────────────────────
 
 _BASE_PROMPT = """\
-You are a scientific data interpreter for URSA (Universal Rasterized Science \
-Agent). Your role is to help users — including non-technical stakeholders such \
-as engineers, planners, and decision-makers — understand spatiotemporal \
-environmental data.
+You are a scientific data interpreter for CLIO (Climate and Land data \
+Interpretation Oracle). Your role is to help users — including non-technical \
+stakeholders such as engineers, planners, and decision-makers — understand \
+spatiotemporal environmental data.
 
 {dataset_block}
 

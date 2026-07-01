@@ -1,5 +1,5 @@
 """
-Tests for the refactored URSA architecture.
+Tests for the refactored CLIO architecture.
 
 Covers:
   - AgentState schema (simplified)
@@ -20,7 +20,7 @@ load_dotenv()
 
 def test_agent_state_requires_only_messages():
     """AgentState no longer needs active_selection or tools."""
-    from ursa.agent.schemas import AgentState
+    from clio.agent.schemas import AgentState
 
     state = AgentState(messages=[HumanMessage(content="hello")])
     assert len(state.messages) == 1
@@ -32,7 +32,7 @@ def test_agent_state_requires_only_messages():
 
 def test_build_tools_returns_rag_tool():
     """build_tools() should return exactly one tool: bisect_context_retriever."""
-    from ursa.agent.tools import build_tools
+    from clio.agent.tools import build_tools
 
     tools = build_tools()
     assert len(tools) == 1
@@ -52,7 +52,7 @@ def real_dataset():
 
 def test_process_region_returns_expected_keys(real_dataset):
     """process_region() should return heatmap, timeseries, and stats dicts."""
-    from ursa.data_processor import process_region
+    from clio.data_processor import process_region
 
     # Use a small slice near the center of the dataset
     x_mid = float(real_dataset["x"].mean())
@@ -101,7 +101,7 @@ def test_process_region_returns_expected_keys(real_dataset):
 
 def test_process_region_raises_on_empty_selection(real_dataset):
     """process_region() should raise ValueError for an out-of-bounds bbox."""
-    from ursa.data_processor import process_region
+    from clio.data_processor import process_region
 
     skip = {"crs", "spatial_ref", "grid_mapping"}
     variable = next(v for v in real_dataset.data_vars if v not in skip)

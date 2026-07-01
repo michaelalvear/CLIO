@@ -18,7 +18,7 @@ DENDRITIC A Human-Centered Artificial Intelligence and Data Science Institute, F
 Project Structure:
    frontend/           - Web UI (index.html)
    rag/                - ChromaDB utilities (chromadb_utils.py)
-   src/ursa/           - Main package
+   src/clio/           - Main package
      agent/            - Orchestration, tools, schemas, message formatter
      app.py            - Flask server entry point
      config.py         - Configuration
@@ -50,6 +50,6 @@ Setup:
    PDF_PATH=/path/to/your/bisect_paper.pdf
 
 Running the App:
-   python -m ursa.app
+   python -m clio.app
 
    The server will start on http://localhost:5001

@@ -1,5 +1,5 @@
 """
-URSA RAG Manager
+CLIO RAG Manager
 Console interface for managing the Chroma vector knowledge base.
 
 Scans a directory (DOCS_PATH) for .pdf and .txt files and embeds them into
@@ -376,7 +376,7 @@ def main() -> None:
 
     # ── Header ──────────────────────────────────────────────────────────────
     print("\n" + "=" * 50)
-    print("  URSA RAG Manager")
+    print("  CLIO RAG Manager")
     print("=" * 50)
     print(f"  Chroma DB   : {os.getenv('CHROMADB_PATH')}")
     print(f"  Docs dir    : {docs_dir}")

@@ -1,5 +1,5 @@
 """
-Flask server for URSA.
+Flask server for CLIO.
 /region/select  — deterministic Xarray slicing driven by the user's map selection
 /query          — LLM interpreter that receives the current selection as context
 /dataset/info   — dataset metadata for populating the frontend UI
@@ -15,9 +15,9 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-from ursa.agent.orchestration import run_agent
-from ursa.data_processor import process_region
-from ursa.cf_utils import detect_crs, get_cf_axes, get_transformers, dataset_prompt_block
+from clio.agent.orchestration import run_agent
+from clio.data_processor import process_region
+from clio.cf_utils import detect_crs, get_cf_axes, get_transformers, dataset_prompt_block
 
 load_dotenv()
 

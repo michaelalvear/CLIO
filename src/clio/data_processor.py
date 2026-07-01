@@ -13,11 +13,11 @@ from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderServiceError
 from pyproj import Geod
 
-from ursa import config  # sets matplotlib backend to Agg before pyplot import
+from clio import config  # sets matplotlib backend to Agg before pyplot import
 import matplotlib.pyplot as plt
-from ursa.cf_utils import detect_crs, get_cf_axes, get_transformers
+from clio.cf_utils import detect_crs, get_cf_axes, get_transformers
 
-_geolocator = Nominatim(user_agent="ursa_data_processor", timeout=5)
+_geolocator = Nominatim(user_agent="clio_data_processor", timeout=5)
 _geod       = Geod(ellps="WGS84")
 
 

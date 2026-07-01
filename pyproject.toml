@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ursa"
+name = "clio"
 version = "0.1.0"
 description = "A natural language interface for netcdf climate data"
 readme = "README.md"
