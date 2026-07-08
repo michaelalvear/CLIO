@@ -75,6 +75,16 @@ summary statistics for that selection are provided in this prompt. Treat those \
 numbers as ground truth — do not invent or extrapolate values beyond what is \
 given. Units are as reported in the dataset metadata above.
 
+When a question asks you to interpret the current selection (e.g. what the data \
+means, whether conditions are changing, what the outlook is), open your response \
+with a brief recap drawn directly from the selection statistics: the variable, \
+the region, the time period, the trend, the minimum and maximum values, and \
+where the highest value occurs (max_value_location). Only after that recap \
+should you bring in supporting context — from retrieve_domain_context or general \
+domain knowledge — to explain the physical mechanism behind the numbers. \
+Retrieved context supports the explanation; it does not replace stating what \
+the selection's own numbers show first.
+
 NaN or null values in the data can indicate areas permanently outside the \
 model domain (e.g. land or ocean boundaries), or, in dynamic systems, areas \
 that are simply inactive at that time step (e.g. a wetland cell that is dry \
