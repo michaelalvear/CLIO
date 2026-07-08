@@ -31,12 +31,12 @@ def test_agent_state_requires_only_messages():
 # ── Tools tests ────────────────────────────────────────────────────────────
 
 def test_build_tools_returns_rag_tool():
-    """build_tools() should return exactly one tool: bisect_context_retriever."""
+    """build_tools() should return exactly one tool: retrieve_domain_context."""
     from clio.agent.tools import build_tools
 
     tools = build_tools()
     assert len(tools) == 1
-    assert tools[0].name == "bisect_context_retriever"
+    assert tools[0].name == "retrieve_domain_context"
 
 
 # ── data_processor tests ───────────────────────────────────────────────────
