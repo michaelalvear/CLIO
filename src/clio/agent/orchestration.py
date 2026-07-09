@@ -13,15 +13,17 @@ from langgraph.prebuilt import ToolNode
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
-from clio.agent.tools import build_tools
+from clio.agent.tools import build_tools, knowledge_base_prompt_block, get_vectorstore
 from clio.agent.schemas import AgentState
 
 load_dotenv()
 
 # ── Tools & LLM ─────────────────────────────────────────────────────────────
 
-TOOLS           = build_tools()
-_llm            = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
+_VECTORSTORE    = get_vectorstore()
+TOOLS           = build_tools(_VECTORSTORE)
+_KB_BLOCK       = knowledge_base_prompt_block(_VECTORSTORE)
+_llm            = ChatGoogleGenerativeAI(model="gemini-pro-latest", temperature=0)
 _llm_with_tools = _llm.bind_tools(TOOLS)
 
 # ── Graph nodes ─────────────────────────────────────────────────────────────
@@ -63,6 +65,16 @@ from the domain knowledge base whenever a question calls for methodological \
 detail, scientific background, or explanation of model assumptions. \
 Always provide complete citations including source page numbers.
 
+{kb_block}
+
+Recognizing a document's title above does not mean you already know its \
+contents. Even if a title looks familiar from your training, you must still \
+call retrieve_domain_context and ground any claim about that document in an \
+actual retrieved passage — never answer from memory of a similarly titled \
+paper. Use the list above only to scope what you can retrieve: if a question \
+falls outside every title listed, say so plainly instead of retrieving \
+anyway or answering from general training knowledge.
+
 Users select data through the map interface by drawing a single rectangular \
 bounding box (not a polygon, transect line, or any other shape), then choosing \
 a time range and a variable from a dropdown. This is the only selection \
@@ -98,7 +110,7 @@ Use plain text only. Do not use markdown such as **bold**, *italic*, or headers.
 
 
 def _build_system_prompt(dataset_block: str, selection_context: dict | None) -> str:
-    base = _BASE_PROMPT.format(dataset_block=dataset_block)
+    base = _BASE_PROMPT.format(dataset_block=dataset_block, kb_block=_KB_BLOCK)
     if selection_context:
         ctx_block = (
             "\n\nCURRENT DATA SELECTION (user-defined map region):\n"

@@ -13,17 +13,25 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 load_dotenv()
 
 
-def build_tools() -> list:
-    """Return the list of tools available to the agent."""
+def get_vectorstore() -> Chroma:
+    """
+    Build the Chroma vectorstore connection. Shared by build_tools() (for
+    retrieval) and knowledge_base_prompt_block() (for listing source titles)
+    so both use the same connection instead of opening two.
+    """
     embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
-
     collection = os.getenv("CHROMADB_COLLECTION", "domain_knowledge")
 
-    vectorstore = Chroma(
+    return Chroma(
         persist_directory=os.getenv("CHROMADB_PATH"),
         embedding_function=embeddings,
         collection_name=collection,
     )
+
+
+def build_tools(vectorstore: Chroma | None = None) -> list:
+    """Return the list of tools available to the agent."""
+    vectorstore = vectorstore or get_vectorstore()
 
     retriever = vectorstore.as_retriever(
         search_type="similarity",
@@ -50,3 +58,24 @@ def build_tools() -> list:
     )
 
     return [retrieve_domain_context]
+
+
+def knowledge_base_prompt_block(vectorstore: Chroma | None = None) -> str:
+    """
+    List the distinct source document titles in the knowledge base, for
+    injection into the agent system prompt.
+
+    Titles only -- never chunk content or summaries -- so the agent can scope
+    what it can retrieve without being tempted to answer from title
+    recognition instead of actually calling retrieve_domain_context.
+    """
+    vectorstore = vectorstore or get_vectorstore()
+    metadatas   = vectorstore.get()["metadatas"]
+    titles      = sorted({m["source_title"] for m in metadatas if m.get("source_title")})
+
+    if not titles:
+        return "KNOWLEDGE BASE: no documents currently loaded."
+
+    lines = ["KNOWLEDGE BASE -- documents available via retrieve_domain_context:"]
+    lines.extend(f"  - {t}" for t in titles)
+    return "\n".join(lines)
