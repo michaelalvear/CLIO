@@ -15,7 +15,9 @@ Required env vars:
 Author: Michael Alvear
 """
 
+import json
 import os
+import re
 import sys
 import uuid
 from pathlib import Path
@@ -146,10 +148,117 @@ def _extract_title(file_path: Path) -> str:
     return fallback
 
 
-def _load_file(file_path: Path):
-    """Return a list of LangChain Document objects from a .pdf or .txt file."""
-    ext   = file_path.suffix.lower()
-    title = _extract_title(file_path)
+def _extract_author(file_path: Path) -> str:
+    """Best-effort /Author extraction from PDF metadata. Returns '' if
+    unavailable -- caller decides the placeholder shown to the user."""
+    if file_path.suffix.lower() != ".pdf":
+        return ""
+    try:
+        from pypdf import PdfReader
+        info = PdfReader(str(file_path)).metadata
+        return (info.get("/Author") or "").strip() if info else ""
+    except Exception:
+        return ""
+
+
+_DOI_RE = re.compile(r"(?:doi\.org/|doi:\s*)?(10\.\d{4,9}/[-._;()/:A-Za-z0-9]+)", re.IGNORECASE)
+
+
+def _extract_doi(file_path: Path) -> str:
+    """
+    Best-effort DOI extraction: checks the /Subject metadata field first
+    (publisher-set metadata, most reliable), then scans the first several
+    pages of text -- wide enough to reach a "suggested citation" block,
+    which is where report-series publishers (e.g. USGS) often place the DOI
+    a few pages into the front matter rather than on the title page itself.
+
+    The match isn't guaranteed clean -- PDF text extraction can glue a DOI
+    directly onto the following word or trailing punctuation with no space.
+    That's fine: the suggested value is always shown to the user for
+    confirmation during review, so an imprecise match gets caught and fixed
+    there rather than needing a perfect regex here.
+    """
+    if file_path.suffix.lower() != ".pdf":
+        return ""
+    try:
+        from pypdf import PdfReader
+        reader  = PdfReader(str(file_path))
+        subject = (reader.metadata.get("/Subject") or "") if reader.metadata else ""
+        match   = _DOI_RE.search(subject)
+        if match:
+            return match.group(1).rstrip(".,;:")
+
+        text = ""
+        for page in reader.pages[:8]:
+            text += page.extract_text() or ""
+        match = _DOI_RE.search(text)
+        return match.group(1).rstrip(".,;:") if match else ""
+    except Exception:
+        return ""
+
+
+# ── Metadata review ───────────────────────────────────────────────────────
+
+def _metadata_path(docs_dir: Path) -> Path:
+    return docs_dir / "metadata.json"
+
+
+def _load_metadata_store(docs_dir: Path) -> dict:
+    path = _metadata_path(docs_dir)
+    if not path.exists():
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _save_metadata_store(docs_dir: Path, store: dict) -> None:
+    with open(_metadata_path(docs_dir), "w", encoding="utf-8") as fh:
+        json.dump(store, fh, indent=2, sort_keys=True)
+
+
+def _review_metadata(file_path: Path, store: dict) -> dict:
+    """
+    Show this file's currently known title/author/DOI -- from a previous
+    review if present, otherwise freshly extracted -- and let the user
+    accept each field with Enter or type a replacement. Always shown, even
+    for previously-reviewed files, so a bad auto-filled value (or a bad
+    earlier human answer) can be caught and corrected on any run, not just
+    the first.
+    """
+    key    = file_path.name
+    cached = store.get(key, {})
+    label  = "previously reviewed" if key in store else "new"
+
+    # A cached "unknown"/"none" isn't trusted as a real answer -- it might
+    # just be a placeholder a prior run couldn't fill in (e.g. before an
+    # extraction fix), so re-attempt extraction rather than getting stuck
+    # repeating it forever. A cached real value is trusted and used as-is.
+    cached_author = cached.get("author")
+    cached_doi    = cached.get("doi")
+
+    title_default  = cached.get("title") or _extract_title(file_path)
+    author_default = (
+        cached_author if cached_author and cached_author != "unknown" else None
+    ) or _extract_author(file_path) or "unknown"
+    doi_default = (
+        cached_doi if cached_doi and cached_doi != "none" else None
+    ) or _extract_doi(file_path) or "none"
+
+    print(f"\n── {file_path.name} ({label}) ──")
+    title  = input(f"  Title  [{title_default}]: ").strip()  or title_default
+    author = input(f"  Author [{author_default}]: ").strip() or author_default
+    doi    = input(f"  DOI    [{doi_default}]: ").strip()    or doi_default
+
+    record = {"title": title, "author": author, "doi": doi}
+    store[key] = record
+    return record
+
+
+def _load_file(file_path: Path, metadata: dict):
+    """Return a list of LangChain Document objects from a .pdf or .txt file,
+    stamped with the given reviewed metadata (title/author/doi) on every
+    chunk."""
+    ext = file_path.suffix.lower()
 
     if ext == ".pdf":
         loader = PyPDFLoader(str(file_path))
@@ -166,7 +275,9 @@ def _load_file(file_path: Path):
         raise ValueError(f"Unsupported file type: {ext}")
 
     for doc in docs:
-        doc.metadata["source_title"] = title
+        doc.metadata["source_title"]  = metadata["title"]
+        doc.metadata["source_author"] = metadata["author"]
+        doc.metadata["source_doi"]    = metadata["doi"]
 
     return docs
 
@@ -179,7 +290,7 @@ def cmd_add(
     ef: EmbeddingFunction,
     docs_dir: Path,
 ) -> None:
-    """add [collection] — embed all docs in DOCS_PATH into a collection."""
+    """add [collection] — review metadata, then embed all docs in DOCS_PATH into a collection."""
     collection_name = _resolve_collection(args, client, prompt="Target collection")
 
     files = _discover_files(docs_dir)
@@ -191,6 +302,18 @@ def cmd_add(
     for f in files:
         size_kb = f.stat().st_size // 1024
         print(f"  [{f.suffix.upper()[1:]:3}]  {f.name}  ({size_kb} KB)")
+
+    store = _load_metadata_store(docs_dir)
+    print("\nReview metadata for each file (Enter to accept, or type a replacement):")
+    print("Check each value against the source document before accepting -- an "
+          "auto-extracted title/author/DOI can look like a plausible real value "
+          "and still be wrong (e.g. a generic PDF metadata label instead of the "
+          "document's actual title). Don't just press Enter through all of them.")
+    reviewed = {}
+    for file_path in files:
+        reviewed[file_path.name] = _review_metadata(file_path, store)
+        _save_metadata_store(docs_dir, store)
+    print(f"\nMetadata saved to {_metadata_path(docs_dir)}.")
 
     confirm = input(f"\nEmbed all into '{collection_name}'? [y/N]: ").strip().lower()
     if confirm != "y":
@@ -208,7 +331,7 @@ def cmd_add(
     for file_path in files:
         try:
             print(f"\n  Loading   {file_path.name} ...", end=" ", flush=True)
-            raw_docs = _load_file(file_path)
+            raw_docs = _load_file(file_path, reviewed[file_path.name])
             chunks   = splitter.split_documents(raw_docs)
             ids      = [str(uuid.uuid4()) for _ in chunks]
             texts    = [c.page_content for c in chunks]
@@ -269,10 +392,14 @@ def cmd_preview(args: list, client: ClientAPI) -> None:
           f"— showing {len(records)} sample(s) ──")
 
     for chunk_id, text, meta in records:
-        title = meta.get("source_title", Path(meta.get("source", "?")).name)
-        page  = meta.get("page_label", meta.get("page", "?"))
+        title  = meta.get("source_title", Path(meta.get("source", "?")).name)
+        author = meta.get("source_author", "unknown")
+        doi    = meta.get("source_doi", "none")
+        page   = meta.get("page_label", meta.get("page", "?"))
         print(f"\n  ID     : {chunk_id}")
         print(f"  Title  : {title}")
+        print(f"  Author : {author}")
+        print(f"  DOI    : {doi}")
         print(f"  Page   : {page}")
         print(f"  Text   : {text[:300]}{'...' if len(text) > 300 else ''}")
         print("  " + "─" * 60)
@@ -311,10 +438,14 @@ def cmd_query(args: list, client: ClientAPI, ef: EmbeddingFunction) -> None:
     for rank, (chunk_id, text, meta, dist) in enumerate(
         zip(ids, docs, metas, distances), start=1
     ):
-        title = meta.get("source_title", Path(meta.get("source", "?")).name)
-        page  = meta.get("page_label", meta.get("page", "?"))
+        title  = meta.get("source_title", Path(meta.get("source", "?")).name)
+        author = meta.get("source_author", "unknown")
+        doi    = meta.get("source_doi", "none")
+        page   = meta.get("page_label", meta.get("page", "?"))
         print(f"\n  Rank     : {rank}  (distance: {dist:.4f})")
         print(f"  Title    : {title}")
+        print(f"  Author   : {author}")
+        print(f"  DOI      : {doi}")
         print(f"  Page     : {page}")
         print(f"  Text     : {text[:400]}{'...' if len(text) > 400 else ''}")
         print("  " + "─" * 60)

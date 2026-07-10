@@ -69,7 +69,7 @@
       word-break: break-word;
     }
 
-    .assistant-text { line-height: 1.7; max-width: 320px; color: var(--text); font-size: 14px; }
+    .assistant-text { line-height: 1.7; max-width: 320px; color: var(--text); font-size: 14px; white-space: pre-wrap; }
 
     #input-area { padding: 16px; border-top: 1px solid var(--border); }
     #input {
@@ -367,16 +367,20 @@ function addAssistantMessage(text, toolLog) {
       const query   = call.args?.query || call.args?.input || JSON.stringify(call.args);
       const content = results[i]?.content || "";
 
-      // Split into individual chunks and extract source + page from each
+      // Split into individual chunks and extract source + page (+ author/doi) from each
       const chunks = content.split("--- DOCUMENT CHUNK ---").filter(c => c.trim());
       const bySource = {};
       chunks.forEach(chunk => {
-        const srcMatch  = chunk.match(/SOURCE:\s*([^\n]+)/);
-        const pageMatch = chunk.match(/PAGE:\s*([^\n]+)/);
-        const src  = srcMatch  ? srcMatch[1].trim()  : "Unknown source";
-        const page = pageMatch ? pageMatch[1].trim() : "?";
-        if (!bySource[src]) bySource[src] = [];
-        if (!bySource[src].includes(page)) bySource[src].push(page);
+        const srcMatch    = chunk.match(/SOURCE:\s*([^\n]+)/);
+        const pageMatch   = chunk.match(/PAGE:\s*([^\n]+)/);
+        const authorMatch = chunk.match(/AUTHOR:\s*([^\n]+)/);
+        const doiMatch    = chunk.match(/DOI:\s*([^\n]+)/);
+        const src    = srcMatch    ? srcMatch[1].trim()    : "Unknown source";
+        const page   = pageMatch   ? pageMatch[1].trim()   : "?";
+        const author = authorMatch ? authorMatch[1].trim() : "unknown";
+        const doi    = doiMatch    ? doiMatch[1].trim()    : "none";
+        if (!bySource[src]) bySource[src] = { pages: [], author, doi };
+        if (!bySource[src].pages.includes(page)) bySource[src].pages.push(page);
       });
 
       return { query, bySource };
@@ -394,7 +398,14 @@ function addAssistantMessage(text, toolLog) {
       const entry = document.createElement("div");
       entry.className = "tool-log-entry";
       const sourceLines = Object.entries(bySource)
-        .map(([src, pages]) => `<div class="tool-log-pages">${escHtml(src)} — p. ${pages.map(escHtml).join(", ")}</div>`)
+        .map(([src, info]) => {
+          const authorPart = info.author && info.author.toLowerCase() !== "unknown"
+            ? `${escHtml(info.author)} — ` : "";
+          const doiPart = info.doi && info.doi.toLowerCase() !== "none"
+            ? ` — <a href="https://doi.org/${escHtml(info.doi)}" target="_blank" rel="noopener">doi.org/${escHtml(info.doi)}</a>`
+            : "";
+          return `<div class="tool-log-pages">${authorPart}${escHtml(src)} — p. ${info.pages.map(escHtml).join(", ")}${doiPart}</div>`;
+        })
         .join("");
       entry.innerHTML =
         `<div class="tool-log-query">Query: "${escHtml(query)}"</div>` +

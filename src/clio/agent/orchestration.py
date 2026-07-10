@@ -65,6 +65,12 @@ from the domain knowledge base whenever a question calls for methodological \
 detail, scientific background, or explanation of model assumptions. \
 Always provide complete citations including source page numbers.
 
+Each retrieved chunk also includes an AUTHOR and a DOI field alongside its \
+SOURCE and PAGE. When AUTHOR is not "unknown", cite using the author's name \
+(e.g. "Gebremedhin et al.") rather than repeating the full document title. \
+When DOI is not "none", you may note that the source has a DOI available \
+for verification; never state a DOI when the field says "none".
+
 {kb_block}
 
 Recognizing a document's title above does not mean you already know its \

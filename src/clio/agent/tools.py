@@ -41,6 +41,8 @@ def build_tools(vectorstore: Chroma | None = None) -> list:
     doc_prompt = PromptTemplate.from_template(
         "--- DOCUMENT CHUNK ---\n"
         "SOURCE: {source_title}\n"
+        "AUTHOR: {source_author}\n"
+        "DOI: {source_doi}\n"
         "PAGE: {page_label}\n"
         "CONTENT: {page_content}\n"
     )
