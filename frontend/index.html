@@ -148,8 +148,16 @@
     .tool-log details[open] summary::before { transform: rotate(90deg); }
     .tool-log-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
     .tool-log-entry { background: #f0f4f8; border-radius: 6px; padding: 6px 8px; }
-    .tool-log-query { color: var(--text); margin-bottom: 3px; }
+    .tool-log-query { color: var(--text); margin-bottom: 5px; }
     .tool-log-pages { color: var(--accent); font-weight: 600; }
+    .tool-log-source {
+      border-left: 2px solid var(--accent);
+      padding: 3px 0 3px 8px;
+    }
+    .tool-log-source + .tool-log-source { margin-top: 7px; }
+    .tool-log-source-title { color: var(--text); font-weight: 600; }
+    .tool-log-source-meta { color: var(--muted); font-weight: 400; margin-top: 1px; }
+    .tool-log-source-meta a { color: var(--accent); font-weight: 600; }
     .stats-grounded {
       margin-top: 8px; max-width: 320px; font-size: 11px;
       color: var(--muted); display: flex; align-items: center; gap: 5px;
@@ -404,7 +412,10 @@ function addAssistantMessage(text, toolLog) {
           const doiPart = info.doi && info.doi.toLowerCase() !== "none"
             ? ` — <a href="https://doi.org/${escHtml(info.doi)}" target="_blank" rel="noopener">doi.org/${escHtml(info.doi)}</a>`
             : "";
-          return `<div class="tool-log-pages">${authorPart}${escHtml(src)} — p. ${info.pages.map(escHtml).join(", ")}${doiPart}</div>`;
+          return `<div class="tool-log-source">
+              <div class="tool-log-source-title">${escHtml(src)}</div>
+              <div class="tool-log-source-meta">${authorPart}p. ${info.pages.map(escHtml).join(", ")}${doiPart}</div>
+            </div>`;
         })
         .join("");
       entry.innerHTML =

@@ -35,7 +35,7 @@ def build_tools(vectorstore: Chroma | None = None) -> list:
 
     retriever = vectorstore.as_retriever(
         search_type="similarity",
-        search_kwargs={"k": 5},
+        search_kwargs={"k": 8},
     )
 
     doc_prompt = PromptTemplate.from_template(
