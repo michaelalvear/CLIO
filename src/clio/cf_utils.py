@@ -146,6 +146,37 @@ def get_transformers(dataset_crs: str):
     return to_latlon, from_latlon
 
 
+# ── Unit display formatting ─────────────────────────────────────────────────
+
+_UNIT_DISPLAY_ALIASES = {
+    "degc":       "°C",
+    "deg_c":      "°C",
+    "degree_c":   "°C",
+    "degrees_c":  "°C",
+    "celsius":    "°C",
+    "degf":       "°F",
+    "deg_f":      "°F",
+    "degree_f":   "°F",
+    "degrees_f":  "°F",
+    "fahrenheit": "°F",
+}
+
+
+def format_units(units: str) -> str:
+    """
+    Normalize common CF/udunits unit strings (e.g. "degC") into their
+    conventional display form (e.g. "°C") for anything shown to the user or
+    injected into the agent's context. This is deterministic display
+    formatting done in the Access Layer -- the LLM only ever sees the
+    already-normalized string, so it never has to translate raw NetCDF unit
+    conventions itself. Units without a known alias are returned unchanged.
+    """
+    if not units:
+        return units
+    key = units.strip().lower().replace(" ", "_")
+    return _UNIT_DISPLAY_ALIASES.get(key, units)
+
+
 # ── Dataset metadata for the agent system prompt ───────────────────────────
 
 def dataset_prompt_block(dataset: xr.Dataset, lat_lon_bounds: dict | None = None) -> str:
@@ -189,7 +220,7 @@ def dataset_prompt_block(dataset: xr.Dataset, lat_lon_bounds: dict | None = None
         if da.ndim == 0 or "grid_mapping_name" in da.attrs:
             continue
         long_name     = da.attrs.get("long_name", var)
-        units         = da.attrs.get("units", "unknown")
+        units         = format_units(da.attrs.get("units", "unknown"))
         standard_name = da.attrs.get("standard_name", "")
         entry = f"  - {var} ({long_name}): units={units}"
         if standard_name:

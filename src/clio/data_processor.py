@@ -15,7 +15,7 @@ from pyproj import Geod
 
 from clio import config  # sets matplotlib backend to Agg before pyplot import
 import matplotlib.pyplot as plt
-from clio.cf_utils import detect_crs, get_cf_axes, get_transformers
+from clio.cf_utils import detect_crs, get_cf_axes, get_transformers, format_units
 
 _geolocator = Nominatim(user_agent="clio_data_processor", timeout=5)
 _geod       = Geod(ellps="WGS84")
@@ -190,7 +190,7 @@ def process_region(
     stats = {
         "variable":    variable,
         "long_name":   str(da.attrs.get("long_name", variable)),
-        "units":       str(da.attrs.get("units", "unknown")),
+        "units":       format_units(str(da.attrs.get("units", "unknown"))),
         "time_range":  [
             str(t_coords[0])[:10],
             str(t_coords[-1])[:10],

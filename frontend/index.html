@@ -382,12 +382,14 @@ function addAssistantMessage(text, toolLog) {
         const srcMatch    = chunk.match(/SOURCE:\s*([^\n]+)/);
         const pageMatch   = chunk.match(/PAGE:\s*([^\n]+)/);
         const authorMatch = chunk.match(/AUTHOR:\s*([^\n]+)/);
+        const yearMatch   = chunk.match(/YEAR:\s*([^\n]+)/);
         const doiMatch    = chunk.match(/DOI:\s*([^\n]+)/);
         const src    = srcMatch    ? srcMatch[1].trim()    : "Unknown source";
         const page   = pageMatch   ? pageMatch[1].trim()   : "?";
         const author = authorMatch ? authorMatch[1].trim() : "unknown";
+        const year   = yearMatch   ? yearMatch[1].trim()   : "unknown";
         const doi    = doiMatch    ? doiMatch[1].trim()    : "none";
-        if (!bySource[src]) bySource[src] = { pages: [], author, doi };
+        if (!bySource[src]) bySource[src] = { pages: [], author, year, doi };
         if (!bySource[src].pages.includes(page)) bySource[src].pages.push(page);
       });
 
@@ -407,8 +409,10 @@ function addAssistantMessage(text, toolLog) {
       entry.className = "tool-log-entry";
       const sourceLines = Object.entries(bySource)
         .map(([src, info]) => {
+          const yearPart = info.year && info.year.toLowerCase() !== "unknown"
+            ? ` (${escHtml(info.year)})` : "";
           const authorPart = info.author && info.author.toLowerCase() !== "unknown"
-            ? `${escHtml(info.author)} — ` : "";
+            ? `${escHtml(info.author)}${yearPart} — ` : "";
           const doiPart = info.doi && info.doi.toLowerCase() !== "none"
             ? ` — <a href="https://doi.org/${escHtml(info.doi)}" target="_blank" rel="noopener">doi.org/${escHtml(info.doi)}</a>`
             : "";

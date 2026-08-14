@@ -161,6 +161,24 @@ def _extract_author(file_path: Path) -> str:
         return ""
 
 
+def _extract_year(file_path: Path) -> str:
+    """Best-effort publication year extraction from the PDF /CreationDate
+    metadata field. This is only a rough first guess -- the PDF's creation
+    date isn't always the true publication year -- so like title/author/DOI
+    it is always shown to the user for confirmation during review rather
+    than trusted outright."""
+    if file_path.suffix.lower() != ".pdf":
+        return ""
+    try:
+        from pypdf import PdfReader
+        info = PdfReader(str(file_path)).metadata
+        raw = (info.get("/CreationDate") or "") if info else ""
+        m = re.match(r"D:(\d{4})", raw)
+        return m.group(1) if m else ""
+    except Exception:
+        return ""
+
+
 _DOI_RE = re.compile(r"(?:doi\.org/|doi:\s*)?(10\.\d{4,9}/[-._;()/:A-Za-z0-9]+)", re.IGNORECASE)
 
 
@@ -235,6 +253,7 @@ def _review_metadata(file_path: Path, store: dict) -> dict:
     # repeating it forever. A cached real value is trusted and used as-is.
     cached_author = cached.get("author")
     cached_doi    = cached.get("doi")
+    cached_year   = cached.get("year")
 
     title_default  = cached.get("title") or _extract_title(file_path)
     author_default = (
@@ -243,13 +262,17 @@ def _review_metadata(file_path: Path, store: dict) -> dict:
     doi_default = (
         cached_doi if cached_doi and cached_doi != "none" else None
     ) or _extract_doi(file_path) or "none"
+    year_default = (
+        cached_year if cached_year and cached_year != "unknown" else None
+    ) or _extract_year(file_path) or "unknown"
 
     print(f"\n── {file_path.name} ({label}) ──")
     title  = input(f"  Title  [{title_default}]: ").strip()  or title_default
     author = input(f"  Author [{author_default}]: ").strip() or author_default
+    year   = input(f"  Year   [{year_default}]: ").strip()   or year_default
     doi    = input(f"  DOI    [{doi_default}]: ").strip()    or doi_default
 
-    record = {"title": title, "author": author, "doi": doi}
+    record = {"title": title, "author": author, "year": year, "doi": doi}
     store[key] = record
     return record
 
@@ -277,6 +300,7 @@ def _load_file(file_path: Path, metadata: dict):
     for doc in docs:
         doc.metadata["source_title"]  = metadata["title"]
         doc.metadata["source_author"] = metadata["author"]
+        doc.metadata["source_year"]   = metadata["year"]
         doc.metadata["source_doi"]    = metadata["doi"]
 
     return docs
@@ -394,11 +418,13 @@ def cmd_preview(args: list, client: ClientAPI) -> None:
     for chunk_id, text, meta in records:
         title  = meta.get("source_title", Path(meta.get("source", "?")).name)
         author = meta.get("source_author", "unknown")
+        year   = meta.get("source_year", "unknown")
         doi    = meta.get("source_doi", "none")
         page   = meta.get("page_label", meta.get("page", "?"))
         print(f"\n  ID     : {chunk_id}")
         print(f"  Title  : {title}")
         print(f"  Author : {author}")
+        print(f"  Year   : {year}")
         print(f"  DOI    : {doi}")
         print(f"  Page   : {page}")
         print(f"  Text   : {text[:300]}{'...' if len(text) > 300 else ''}")
@@ -440,11 +466,13 @@ def cmd_query(args: list, client: ClientAPI, ef: EmbeddingFunction) -> None:
     ):
         title  = meta.get("source_title", Path(meta.get("source", "?")).name)
         author = meta.get("source_author", "unknown")
+        year   = meta.get("source_year", "unknown")
         doi    = meta.get("source_doi", "none")
         page   = meta.get("page_label", meta.get("page", "?"))
         print(f"\n  Rank     : {rank}  (distance: {dist:.4f})")
         print(f"  Title    : {title}")
         print(f"  Author   : {author}")
+        print(f"  Year     : {year}")
         print(f"  DOI      : {doi}")
         print(f"  Page     : {page}")
         print(f"  Text     : {text[:400]}{'...' if len(text) > 400 else ''}")

@@ -42,6 +42,7 @@ def build_tools(vectorstore: Chroma | None = None) -> list:
         "--- DOCUMENT CHUNK ---\n"
         "SOURCE: {source_title}\n"
         "AUTHOR: {source_author}\n"
+        "YEAR: {source_year}\n"
         "DOI: {source_doi}\n"
         "PAGE: {page_label}\n"
         "CONTENT: {page_content}\n"
