@@ -148,6 +148,7 @@
     .tool-log details[open] summary::before { transform: rotate(90deg); }
     .tool-log-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
     .tool-log-entry { background: #f0f4f8; border-radius: 6px; padding: 6px 8px; }
+    .tool-log details + details { margin-top: 6px; }
     .tool-log-query { color: var(--text); margin-bottom: 5px; }
     .tool-log-pages { color: var(--accent); font-weight: 600; }
     .tool-log-source {
@@ -357,6 +358,57 @@ function addUserMessage(text) {
   chatThread.scrollTop = chatThread.scrollHeight;
 }
 
+// Cumulative pool of every chunk retrieved so far this session, keyed by
+// source title. The model still has access to everything it said in
+// earlier turns (via conversationHistory, defined below), so a later
+// response can restate facts grounded in a retrieval that happened turns
+// ago — the widget needs to reflect that full pool, not just the current
+// turn's tool call, or it under-reports what's actually informing the
+// response.
+//
+// Every turn's retrieval is kept in full, verbatim, with no deduplication
+// or merging across turns (or within a turn) -- chunks don't overlap
+// cleanly with pages, so collapsing repeat pages into one entry silently
+// undercounts chunks. Each element is {entries, chunkCount}, the same
+// shape a single turn has always produced.
+const sessionTurns = [];
+
+function renderSourceLines(bySource) {
+  return Object.entries(bySource)
+    .map(([src, info]) => {
+      const yearPart = info.year && info.year.toLowerCase() !== "unknown"
+        ? ` (${escHtml(info.year)})` : "";
+      const authorPart = info.author && info.author.toLowerCase() !== "unknown"
+        ? `${escHtml(info.author)}${yearPart} — ` : "";
+      const doiPart = info.doi && info.doi.toLowerCase() !== "none"
+        ? ` — <a href="https://doi.org/${escHtml(info.doi)}" target="_blank" rel="noopener">doi.org/${escHtml(info.doi)}</a>`
+        : "";
+      return `<div class="tool-log-source">
+          <div class="tool-log-source-title">${escHtml(src)}</div>
+          <div class="tool-log-source-meta">${authorPart}p. ${info.pages.map(escHtml).join(", ")}${doiPart}</div>
+        </div>`;
+    })
+    .join("");
+}
+
+function renderRetrievalDetails(summaryText, entries) {
+  const details = document.createElement("details");
+  details.innerHTML = `<summary>${escHtml(summaryText)}</summary>`;
+  const body = document.createElement("div");
+  body.className = "tool-log-body";
+  entries.forEach(({ query, bySource }) => {
+    const entry = document.createElement("div");
+    entry.className = "tool-log-entry";
+    const sourceLines = renderSourceLines(bySource);
+    entry.innerHTML =
+      `<div class="tool-log-query">Query: "${escHtml(query)}"</div>` +
+      (sourceLines || `<div class="tool-log-pages">Sources: not parsed</div>`);
+    body.appendChild(entry);
+  });
+  details.appendChild(body);
+  return details;
+}
+
 function addAssistantMessage(text, toolLog) {
   const row = document.createElement("div");
   row.className = "message-row";
@@ -368,14 +420,18 @@ function addAssistantMessage(text, toolLog) {
 
   const ragCalls = (toolLog || []).filter(e => e.type === "call" && e.tool === "retrieve_domain_context");
 
+  let entries = [];
+  let chunkCount = 0;
   if (ragCalls.length > 0) {
     // Pair each call with its result to extract cited page numbers
     const results = (toolLog || []).filter(e => e.type === "result");
-    const entries = ragCalls.map((call, i) => {
+    entries = ragCalls.map((call, i) => {
       const query   = call.args?.query || call.args?.input || JSON.stringify(call.args);
       const content = results[i]?.content || "";
 
-      // Split into individual chunks and extract source + page (+ author/doi) from each
+      // Split into individual chunks and extract source + page (+ author/doi) from each.
+      // No de-dup: every chunk gets its own page entry, even if it shares a
+      // page with another chunk -- they're still two distinct retrieved chunks.
       const chunks = content.split("--- DOCUMENT CHUNK ---").filter(c => c.trim());
       const bySource = {};
       chunks.forEach(chunk => {
@@ -390,47 +446,39 @@ function addAssistantMessage(text, toolLog) {
         const year   = yearMatch   ? yearMatch[1].trim()   : "unknown";
         const doi    = doiMatch    ? doiMatch[1].trim()    : "none";
         if (!bySource[src]) bySource[src] = { pages: [], author, year, doi };
-        if (!bySource[src].pages.includes(page)) bySource[src].pages.push(page);
+        bySource[src].pages.push(page);
       });
 
       return { query, bySource };
     });
-
-    const details = document.createElement("details");
-    const chunkCount = results.reduce((n, r) => {
+    chunkCount = results.reduce((n, r) => {
       return n + ([...r.content.matchAll(/--- DOCUMENT CHUNK ---/g)].length || 1);
     }, 0);
-    details.innerHTML = `<summary>Domain knowledge base — ${chunkCount} chunk${chunkCount !== 1 ? "s" : ""} retrieved</summary>`;
+  }
 
-    const body = document.createElement("div");
-    body.className = "tool-log-body";
-    entries.forEach(({ query, bySource }) => {
-      const entry = document.createElement("div");
-      entry.className = "tool-log-entry";
-      const sourceLines = Object.entries(bySource)
-        .map(([src, info]) => {
-          const yearPart = info.year && info.year.toLowerCase() !== "unknown"
-            ? ` (${escHtml(info.year)})` : "";
-          const authorPart = info.author && info.author.toLowerCase() !== "unknown"
-            ? `${escHtml(info.author)}${yearPart} — ` : "";
-          const doiPart = info.doi && info.doi.toLowerCase() !== "none"
-            ? ` — <a href="https://doi.org/${escHtml(info.doi)}" target="_blank" rel="noopener">doi.org/${escHtml(info.doi)}</a>`
-            : "";
-          return `<div class="tool-log-source">
-              <div class="tool-log-source-title">${escHtml(src)}</div>
-              <div class="tool-log-source-meta">${authorPart}p. ${info.pages.map(escHtml).join(", ")}${doiPart}</div>
-            </div>`;
-        })
-        .join("");
-      entry.innerHTML =
-        `<div class="tool-log-query">Query: "${escHtml(query)}"</div>` +
-        (sourceLines || `<div class="tool-log-pages">Sources: not parsed</div>`);
-      body.appendChild(entry);
-    });
-    details.appendChild(body);
-    logEl.appendChild(details);
-  } else {
-    // No RAG calls — response was based solely on injected selection stats
+  if (entries.length > 0) {
+    logEl.appendChild(renderRetrievalDetails(
+      `Domain knowledge base — ${chunkCount} chunk${chunkCount !== 1 ? "s" : ""} retrieved this turn`,
+      entries
+    ));
+  }
+
+  // Stack every earlier turn's retrieval underneath, oldest first, exactly
+  // as it was originally rendered -- the model still has all of it in
+  // context via conversationHistory, so a claim in this response can be
+  // grounded in any of it, not just what was retrieved this turn.
+  sessionTurns.forEach((turn, i) => {
+    logEl.appendChild(renderRetrievalDetails(
+      `Retrieved earlier in this conversation (turn ${i + 1}) — ${turn.chunkCount} chunk${turn.chunkCount !== 1 ? "s" : ""}`,
+      turn.entries
+    ));
+  });
+
+  if (entries.length > 0) sessionTurns.push({ entries, chunkCount });
+
+  if (entries.length === 0 && sessionTurns.length === 0) {
+    // No RAG calls this turn or ever this session — response was based
+    // solely on injected selection stats.
     logEl.innerHTML = `<div class="stats-grounded">&#9432; Response based on selected region statistics only</div>`;
   }
 
