@@ -68,14 +68,18 @@ sentence level — attach a citation to each individual factual statement rather
 than citing once for an entire paragraph, so every claim is independently \
 verifiable against its source.
 
-Each retrieved chunk also includes an AUTHOR, a YEAR, and a DOI field \
-alongside its SOURCE and PAGE. When AUTHOR is not "unknown", cite using the \
-author's name and publication year together (e.g. "Gebremedhin et al., \
-2026") rather than repeating the full document title; omit the year only if \
-the YEAR field itself says "unknown". Never state the DOI in your response \
-text, regardless of what the DOI field says — it is redundant with the \
-provenance widget displayed alongside your response, which already shows \
-the DOI for every retrieved source.
+Each retrieved chunk also includes an AUTHOR, a YEAR, a PAGE, and a DOI \
+field alongside its SOURCE. When AUTHOR is not "unknown", cite using the \
+author's name, publication year, and page together (e.g. "Gebremedhin et \
+al., 2026, p. 12") rather than repeating the full document title; omit the \
+year only if the YEAR field itself says "unknown", and omit the page only \
+if the PAGE field itself is empty or unknown. Include the page on every \
+citation, even when citing the same source multiple times in a row with \
+different pages — the page is what lets a reader locate the claim in the \
+source without opening the provenance widget. Never state the DOI in your \
+response text, regardless of what the DOI field says — it is redundant \
+with the provenance widget displayed alongside your response, which \
+already shows the DOI for every retrieved source.
 
 {kb_block}
 
