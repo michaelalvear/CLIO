@@ -82,15 +82,15 @@ variables, `salinity` and `temperature`, on a rectilinear grid over South Florid
 
 The agent's explanations are grounded in four published documents. These are
 third-party works, so we link to them rather than redistribute copies. Create
-`documents/rag/`, follow each DOI to the publisher's page, download the PDF, and save
-it under the filename shown:
+`documents/rag/`, follow each DOI to the publisher's page, and save the PDF directly in
+that folder (not in a subfolder):
 
-| Save as | Document | DOI |
-|---|---|---|
-| `bisect_paper.pdf` | Swain, E.D., Lohmann, M.A., & Goodwin, C.R. (2019). *The Hydrologic System of the South Florida Peninsula: Development and Application of the Biscayne and Southern Everglades Coastal Transport (BISECT) Model.* USGS SIR 2019-5045 | [10.3133/sir20195045](https://doi.org/10.3133/sir20195045) |
-| `gebremedhin_2026_bisect_projections.pdf` | Gebremedhin, M.A., Elshall, A.S., Ye, M., Tsegaye, S., & Rotz, R. (2026). *Groundwater-surface water interactions and salinity responses to projected rainfall and sea-level rise in South Florida.* Environmental Research Communications | [10.1088/2515-7620/ae7c60](https://doi.org/10.1088/2515-7620/ae7c60) |
-| `IPCC_AR6_SYR_SPM.pdf` | IPCC (2023). *Climate Change 2023: Synthesis Report — Summary for Policymakers* | [10.59327/IPCC/AR6-9789291691647.001](https://doi.org/10.59327/IPCC/AR6-9789291691647.001) |
-| `noaa_18399_DS1.pdf` | Sweet, W.V., et al. (2017). *Global and Regional Sea Level Rise Scenarios for the United States.* NOAA Tech. Report NOS CO-OPS 083 | [10.7289/V5/TR-NOS-COOPS-083](https://doi.org/10.7289/V5/TR-NOS-COOPS-083) |
+| Document | DOI |
+|---|---|
+| Swain, E.D., Lohmann, M.A., & Goodwin, C.R. (2019). *The Hydrologic System of the South Florida Peninsula: Development and Application of the Biscayne and Southern Everglades Coastal Transport (BISECT) Model.* USGS SIR 2019-5045 | [10.3133/sir20195045](https://doi.org/10.3133/sir20195045) |
+| Gebremedhin, M.A., Elshall, A.S., Ye, M., Tsegaye, S., & Rotz, R. (2026). *Groundwater-surface water interactions and salinity responses to projected rainfall and sea-level rise in South Florida.* Environmental Research Communications | [10.1088/2515-7620/ae7c60](https://doi.org/10.1088/2515-7620/ae7c60) |
+| IPCC (2023). *Climate Change 2023: Synthesis Report — Summary for Policymakers* | [10.59327/IPCC/AR6-9789291691647.001](https://doi.org/10.59327/IPCC/AR6-9789291691647.001) |
+| Sweet, W.V., et al. (2017). *Global and Regional Sea Level Rise Scenarios for the United States.* NOAA Tech. Report NOS CO-OPS 083 | [10.7289/V5/TR-NOS-COOPS-083](https://doi.org/10.7289/V5/TR-NOS-COOPS-083) |
 
 The DOIs resolve to landing pages rather than direct downloads (and the NOAA
 repository blocks scripted requests), so this step is manual.
