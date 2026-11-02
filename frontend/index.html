@@ -464,9 +464,10 @@ function addAssistantMessage(text, toolLog) {
   }
 
   // Stack every earlier turn's retrieval underneath, oldest first, exactly
-  // as it was originally rendered -- the model still has all of it in
-  // context via conversationHistory, so a claim in this response can be
-  // grounded in any of it, not just what was retrieved this turn.
+  // as it was originally rendered -- the chunks themselves are no longer in
+  // the model's context, but conversationHistory keeps its earlier replies,
+  // so a claim in this response can restate something drawn from any of them,
+  // not just what was retrieved this turn.
   sessionTurns.forEach((turn, i) => {
     logEl.appendChild(renderRetrievalDetails(
       `Retrieved earlier in this conversation (turn ${i + 1}) — ${turn.chunkCount} chunk${turn.chunkCount !== 1 ? "s" : ""}`,
