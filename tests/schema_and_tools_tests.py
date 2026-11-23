@@ -115,3 +115,49 @@ def test_process_region_raises_on_empty_selection(real_dataset):
             time_range=[t_start, t_end],
             variable=variable,
         )
+
+
+def _small_selection(real_dataset):
+    """A ~0.1° box at the dataset centre over its first ~30 time steps."""
+    from pyproj import Transformer
+    utm_to_ll = Transformer.from_crs("EPSG:26917", "EPSG:4326", always_xy=True)
+    lon_c, lat_c = utm_to_ll.transform(float(real_dataset["x"].mean()),
+                                       float(real_dataset["y"].mean()))
+    offset = 0.05
+    skip = {"crs", "spatial_ref", "grid_mapping"}
+    return {
+        "bbox_latlon": {"sw": [lat_c - offset, lon_c - offset],
+                        "ne": [lat_c + offset, lon_c + offset]},
+        "time_range":  [str(real_dataset["time"].values[0])[:10],
+                        str(real_dataset["time"].values[min(30, len(real_dataset["time"]) - 1)])[:10]],
+        "variable":    next(v for v in real_dataset.data_vars if v not in skip),
+    }
+
+
+def test_export_region_netcdf_matches_selection(real_dataset, tmp_path):
+    """The downloaded file holds exactly the cells the dashboard summarizes."""
+    from clio.data_processor import export_region_netcdf, select_region
+
+    args = _small_selection(real_dataset)
+    data, filename = export_region_netcdf(dataset=real_dataset, **args)
+
+    assert filename.endswith(".nc")
+    path = tmp_path / filename
+    path.write_bytes(data)
+
+    with xr.open_dataset(path) as out:
+        expected = select_region(real_dataset, **args)[args["variable"]]
+        assert args["variable"] in out.data_vars
+        assert out[args["variable"]].shape == expected.shape
+        np.testing.assert_array_equal(out[args["variable"]].values, expected.values)
+        assert "subset by CLIO" in out.attrs["history"]
+
+
+def test_export_region_netcdf_enforces_size_limit(real_dataset):
+    """Oversized selections and oversized files are both refused."""
+    from clio.data_processor import ExportTooLargeError, export_region_netcdf
+
+    with pytest.raises(ExportTooLargeError, match="exported at once"):
+        export_region_netcdf(dataset=real_dataset, max_source_bytes=1, **_small_selection(real_dataset))
+    with pytest.raises(ExportTooLargeError, match="download limit"):
+        export_region_netcdf(dataset=real_dataset, max_bytes=1, **_small_selection(real_dataset))

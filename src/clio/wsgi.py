@@ -14,7 +14,15 @@ Guardrails (all configurable via env vars):
   REGION_DAILY_PER_CLIENT    /region/select calls per client per day (default 60)
   DAILY_QUERY_LIMIT          /query calls per instance per UTC day   (default 200)
   REGION_DAILY_LIMIT         /region/select calls per instance/day   (default 300)
-  REGION_MAX_CONCURRENT      /region/select calls processed at once  (default 2)
+  EXPORT_RATE_PER_MINUTE     /region/export calls per client/minute  (default 3)
+  EXPORT_DAILY_PER_CLIENT    /region/export calls per client per day (default 20)
+  EXPORT_DAILY_LIMIT         /region/export calls per instance/day   (default 100)
+  MAX_EXPORT_MB              largest /region/export file, compressed (default 30, read
+                             by clio.app; keep under Cloud Run's 32 MiB response cap)
+  MAX_EXPORT_SOURCE_MB       largest selection /region/export will   (default 300, read
+                             write, uncompressed                      by clio.app)
+  REGION_MAX_CONCURRENT      /region/select and /region/export calls processed at
+                             once, shared                            (default 2)
   LIMITS_STORE               "memory" (default) or "firestore". Daily counts kept in
                              memory reset whenever Cloud Run restarts or scales the
                              instance to zero; "firestore" keeps them across restarts
@@ -58,6 +66,9 @@ QUERY_DAILY_PER_CLIENT  = int(os.getenv("QUERY_DAILY_PER_CLIENT", "20"))
 REGION_DAILY_PER_CLIENT = int(os.getenv("REGION_DAILY_PER_CLIENT", "60"))
 DAILY_QUERY_LIMIT      = int(os.getenv("DAILY_QUERY_LIMIT", "200"))
 REGION_DAILY_LIMIT     = int(os.getenv("REGION_DAILY_LIMIT", "300"))
+EXPORT_RATE_PER_MINUTE  = int(os.getenv("EXPORT_RATE_PER_MINUTE", "3"))
+EXPORT_DAILY_PER_CLIENT = int(os.getenv("EXPORT_DAILY_PER_CLIENT", "20"))
+EXPORT_DAILY_LIMIT      = int(os.getenv("EXPORT_DAILY_LIMIT", "100"))
 REGION_MAX_CONCURRENT  = int(os.getenv("REGION_MAX_CONCURRENT", "2"))
 LIMITS_STORE           = os.getenv("LIMITS_STORE", "memory").lower()
 ALLOWED_ORIGINS        = {o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()}
@@ -70,22 +81,27 @@ DATASET                = os.path.basename(os.getenv("NETCDF_DATA_PATH", ""))
 RATE_LIMITS = {
     "query":         QUERY_RATE_PER_MINUTE,
     "region_select": REGION_RATE_PER_MINUTE,
+    "region_export": EXPORT_RATE_PER_MINUTE,
 }
 DAILY_PER_CLIENT = {
     "query":         QUERY_DAILY_PER_CLIENT,
     "region_select": REGION_DAILY_PER_CLIENT,
+    "region_export": EXPORT_DAILY_PER_CLIENT,
 }
 DAILY_LIMITS = {
     "query":         DAILY_QUERY_LIMIT,
     "region_select": REGION_DAILY_LIMIT,
+    "region_export": EXPORT_DAILY_LIMIT,
 }
 DAILY_LIMIT_MESSAGES = {
     "query":         "CLIO has reached its daily question limit. Please try again tomorrow.",
     "region_select": "CLIO has reached its daily map selection limit. Please try again tomorrow.",
+    "region_export": "CLIO has reached its daily download limit. Please try again tomorrow.",
 }
 CLIENT_LIMIT_MESSAGES = {
     "query":         "You have reached today's question limit. Please try again tomorrow.",
     "region_select": "You have reached today's map selection limit. Please try again tomorrow.",
+    "region_export": "You have reached today's download limit. Please try again tomorrow.",
 }
 
 app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_BYTES
@@ -195,8 +211,8 @@ def _enforce_limits():
             return _too_many("Too many requests. Please wait a minute and try again.")
         _minute_counts[key] = _minute_counts.get(key, 0) + 1
 
-    # Map selections load data into memory; a few at a time keeps the instance up.
-    if endpoint == "region_select":
+    # Map selections and downloads load data into memory; a few at a time keeps the instance up.
+    if endpoint in ("region_select", "region_export"):
         if not _region_slots.acquire(blocking=False):
             return _too_many("CLIO is busy with other map selections. Please try again in a minute.")
         g.region_slot = True

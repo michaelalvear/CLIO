@@ -2,26 +2,34 @@
 Flask server for CLIO.
 /region/select  — deterministic Xarray slicing driven by the user's map selection
 /query          — LLM interpreter that receives the current selection as context
+/region/export  — the same selection as a downloadable CF NetCDF file
 /dataset/info   — dataset metadata for populating the frontend UI
 """
 import os
 import signal
 import traceback
+from io import BytesIO
 from pathlib import Path
 
 import xarray as xr
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 
 from clio.agent.orchestration import run_agent
-from clio.data_processor import process_region
+from clio.data_processor import ExportTooLargeError, export_region_netcdf, process_region
 from clio.cf_utils import detect_crs, get_cf_axes, get_transformers, dataset_prompt_block
 
 load_dotenv()
 
 DS = xr.open_dataset(os.getenv("NETCDF_DATA_PATH"), chunks="auto")
+
+# /region/export limits. MAX_EXPORT_MB is the finished (compressed) file;
+# Cloud Run rejects responses over 32 MiB. MAX_EXPORT_SOURCE_MB is the
+# uncompressed selection, checked first so oversized requests do no work.
+MAX_EXPORT_MB        = float(os.getenv("MAX_EXPORT_MB", "30"))
+MAX_EXPORT_SOURCE_MB = float(os.getenv("MAX_EXPORT_SOURCE_MB", "300"))
 
 
 def _compute_lat_lon_bounds(dataset: xr.Dataset) -> dict:
@@ -91,6 +99,44 @@ def region_select():
         )
         return jsonify(result), 200
 
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 422
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/region/export", methods=["POST"])
+def region_export():
+    """
+    Return the user's current selection as a CF NetCDF-4 file download.
+    Same body as /region/select; the slice is identical to what the dashboard shows.
+    """
+    body = request.get_json(silent=True)
+
+    required = ("bbox", "time_range", "variable")
+    if not body or any(k not in body for k in required):
+        return jsonify({"error": f"Body must include: {', '.join(required)}"}), 400
+
+    try:
+        data, filename = export_region_netcdf(
+            dataset=DS,
+            bbox_latlon=body["bbox"],
+            time_range=body["time_range"],
+            variable=body["variable"],
+            max_bytes=int(MAX_EXPORT_MB * 1e6),
+            max_source_bytes=int(MAX_EXPORT_SOURCE_MB * 1e6),
+            source_name=os.path.basename(os.getenv("NETCDF_DATA_PATH", "")),
+        )
+        return send_file(
+            BytesIO(data),
+            mimetype="application/x-netcdf",
+            as_attachment=True,
+            download_name=filename,
+        )
+
+    except ExportTooLargeError as e:
+        return jsonify({"error": str(e)}), 413
     except ValueError as e:
         return jsonify({"error": str(e)}), 422
     except Exception as e:

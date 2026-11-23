@@ -3,9 +3,14 @@ Deterministic Xarray processing for user-defined map selections.
 All data slicing lives here, entirely outside the agent.
 Works with any CF-compliant rectilinear NetCDF dataset.
 """
+import os
+import re
+import shutil
+import tempfile
 import numpy as np
 import matplotlib.colors as mcolors
 import base64
+from datetime import datetime, timezone
 from io import BytesIO
 
 import xarray as xr
@@ -93,24 +98,25 @@ def _reverse_geocode(bbox_latlon: dict) -> list[str]:
     return names
 
 
-def process_region(
+def select_region(
     dataset: xr.Dataset,
     bbox_latlon: dict,
     time_range: list,
     variable: str,
-) -> dict:
+) -> xr.Dataset:
     """
-    Slice the dataset to a lat/lon bounding box and time range, then return
-    a heatmap image, time-series data, and summary statistics.
+    Slice the dataset to a lat/lon bounding box and time range. This is the
+    single source of the selection used by both the dashboard (process_region)
+    and the NetCDF download (export_region_netcdf), so both see the same cells.
 
-    bbox_latlon: {"sw": [lat, lon], "ne": [lat, lon]}
-    time_range:  ["YYYY-MM-DD", "YYYY-MM-DD"]
-    variable:    data variable name
+    Raises ValueError if the variable is unknown or the selection is empty.
     """
-    crs                   = detect_crs(dataset)
+    if variable not in dataset.data_vars:
+        raise ValueError(f"Unknown variable: {variable}")
+
     axes                  = get_cf_axes(dataset)
     x_dim, y_dim, t_dim   = axes["x_dim"], axes["y_dim"], axes["t_dim"]
-    to_latlon, from_latlon = get_transformers(crs)
+    _, from_latlon        = get_transformers(detect_crs(dataset))
 
     sw_lat, sw_lon = bbox_latlon["sw"]
     ne_lat, ne_lon = bbox_latlon["ne"]
@@ -137,7 +143,28 @@ def process_region(
             "No data found in the selected region and time range. "
             "Try expanding your bounding box or adjusting the dates."
         )
+    return selection
 
+
+def process_region(
+    dataset: xr.Dataset,
+    bbox_latlon: dict,
+    time_range: list,
+    variable: str,
+) -> dict:
+    """
+    Slice the dataset to a lat/lon bounding box and time range, then return
+    a heatmap image, time-series data, and summary statistics.
+
+    bbox_latlon: {"sw": [lat, lon], "ne": [lat, lon]}
+    time_range:  ["YYYY-MM-DD", "YYYY-MM-DD"]
+    variable:    data variable name
+    """
+    axes                  = get_cf_axes(dataset)
+    x_dim, y_dim, t_dim   = axes["x_dim"], axes["y_dim"], axes["t_dim"]
+    to_latlon, _          = get_transformers(detect_crs(dataset))
+
+    selection = select_region(dataset, bbox_latlon, time_range, variable)
     da = selection[variable]
 
     # ── Actual (grid-snapped) extent of the selection, in lat/lon ──────────────
@@ -240,3 +267,107 @@ def process_region(
     timeseries = {"labels": labels, "data": values}
 
     return {"heatmap": heatmap, "timeseries": timeseries, "stats": stats}
+
+
+# ── NetCDF export ──────────────────────────────────────────────────────────
+
+class ExportTooLargeError(ValueError):
+    """The requested selection exceeds the export size limit."""
+
+
+# Encoding keys inherited from the source file that describe its on-disk
+# layout and would be invalid for (or fight with) a smaller subset.
+_STALE_ENCODING = ("chunksizes", "original_shape", "contiguous", "source",
+                   "preferred_chunks", "zlib", "complevel", "shuffle",
+                   "compression", "fletcher32", "szip_coding", "szip_pixels_per_block",
+                   "blosc_shuffle", "quantize_mode", "significant_digits")
+
+
+def _grid_mapping_names(dataset: xr.Dataset, variable: str) -> list[str]:
+    """Names of the CF grid_mapping variable(s) referenced by `variable`."""
+    da = dataset[variable]
+    ref = da.attrs.get("grid_mapping") or da.encoding.get("grid_mapping")
+    if not ref:
+        return []
+    # CF allows "crs" or the extended form "crs: x y other_crs: lat lon"
+    tokens = [t.rstrip(":") for t in str(ref).split()]
+    return [t for t in tokens if t in dataset.variables and t not in dataset[variable].dims]
+
+
+def export_region_netcdf(
+    dataset: xr.Dataset,
+    bbox_latlon: dict,
+    time_range: list,
+    variable: str,
+    max_bytes: int | None = None,
+    max_source_bytes: int | None = None,
+    source_name: str = "",
+) -> tuple[bytes, str]:
+    """
+    Write the user's selection (same slice as process_region) to a CF NetCDF-4
+    file and return (file_bytes, suggested_filename).
+
+    The file keeps the variable at its native grid and time resolution, its
+    coordinates, its CF grid_mapping variable (so GIS tools know the CRS) and
+    the original metadata, plus attributes recording how it was subset.
+
+    Two limits, both raising ExportTooLargeError:
+      max_source_bytes  uncompressed size of the selection, checked before
+                        anything is read, to bound the work and memory used.
+      max_bytes         size of the finished (compressed) file. Land cells are
+                        empty and compress away, so files are often several
+                        times smaller than the selection.
+    """
+    selection = select_region(dataset, bbox_latlon, time_range, variable)
+    da = selection[variable]
+
+    if max_source_bytes is not None and da.nbytes > max_source_bytes:
+        raise ExportTooLargeError(
+            f"This selection holds {da.nbytes / 1e6:.0f} MB of data, above the "
+            f"{max_source_bytes / 1e6:.0f} MB that can be exported at once. "
+            f"Select a smaller region or a shorter date range."
+        )
+
+    keep = [variable] + _grid_mapping_names(selection, variable)
+    out = selection[keep]
+
+    for name in out.variables:
+        for key in _STALE_ENCODING:
+            out[name].encoding.pop(key, None)
+    out[variable].encoding.update({"zlib": True, "complevel": 4, "shuffle": True})
+
+    t_dim  = get_cf_axes(dataset)["t_dim"]
+    t_vals = out[t_dim].values
+    start, end = str(t_vals[0])[:10], str(t_vals[-1])[:10]
+    sw, ne = bbox_latlon["sw"], bbox_latlon["ne"]
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    out.attrs = dict(dataset.attrs)
+    history = f"{now}: subset by CLIO to {variable}, bbox (lat/lon) SW={sw} NE={ne}, {start} to {end}"
+    out.attrs["history"] = (f"{history}\n{dataset.attrs['history']}"
+                            if dataset.attrs.get("history") else history)
+    out.attrs["clio_source_file"]       = source_name
+    out.attrs["clio_requested_bbox_sw"] = [float(v) for v in sw]
+    out.attrs["clio_requested_bbox_ne"] = [float(v) for v in ne]
+    out.attrs["clio_time_range"]        = f"{start}/{end}"
+    out.attrs.setdefault("Conventions", "CF-1.8")
+
+    safe_var = re.sub(r"[^A-Za-z0-9_-]+", "_", variable)
+    filename = f"clio_{safe_var}_{start}_{end}.nc"
+
+    # netCDF4 can only write to a path; Cloud Run's /tmp is in memory anyway.
+    tmp_dir = tempfile.mkdtemp(prefix="clio_export_")
+    try:
+        path = os.path.join(tmp_dir, filename)
+        out.to_netcdf(path, format="NETCDF4", engine="netcdf4")
+        size = os.path.getsize(path)
+        if max_bytes is not None and size > max_bytes:
+            raise ExportTooLargeError(
+                f"The file for this selection is {size / 1e6:.0f} MB, above the "
+                f"{max_bytes / 1e6:.0f} MB download limit. Select a smaller region "
+                f"or a shorter date range."
+            )
+        with open(path, "rb") as f:
+            return f.read(), filename
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)

@@ -115,6 +115,15 @@
     #load-btn:hover { opacity: 0.9; }
     #load-btn:disabled { opacity: 0.5; cursor: default; }
 
+    #download-btn {
+      display: none;  /* shown by setLoadedRequest() once data is loaded */
+      padding: 7px 16px; background: white; color: var(--accent);
+      border: 1.5px solid var(--accent); border-radius: 8px; font-weight: 600; font-size: 13px;
+      cursor: pointer; transition: background 0.2s; white-space: nowrap; font-family: inherit;
+    }
+    #download-btn:hover:not(:disabled) { background: rgba(74,144,226,0.08); }
+    #download-btn:disabled { opacity: 0.5; cursor: default; }
+
     #region-hint {
       font-size: 12px; color: var(--muted); font-style: italic;
       display: flex; align-items: center; gap: 6px;
@@ -230,6 +239,7 @@
           <input type="date" id="end-date">
         </div>
         <button id="load-btn" disabled>Load Data</button>
+        <button id="download-btn" title="Download the selection shown as a NetCDF file">Download NetCDF</button>
         <div id="region-hint">Draw a rectangle on the map to select a region</div>
       </div>
     </div>
@@ -261,6 +271,7 @@
 // ── State ──────────────────────────────────────────────────────────────────
 let currentBbox      = null;   // {sw:[lat,lon], ne:[lat,lon]}
 let selectionContext = null;   // stats dict forwarded to /query
+let loadedRequest    = null;   // {bbox, time_range, variable} of the data on screen
 let tsChart          = null;
 let heatOverlay      = null;
 let drawnItems       = null;
@@ -316,6 +327,7 @@ map.on(L.Draw.Event.EDITED, (e) => {
 map.on(L.Draw.Event.DELETED, () => {
   currentBbox      = null;
   selectionContext = null;
+  setLoadedRequest(null);
   if (heatOverlay) { map.removeLayer(heatOverlay); heatOverlay = null; }
   document.getElementById("stats-section").style.display  = "none";
   document.getElementById("chart-section").style.display  = "none";
@@ -621,14 +633,15 @@ document.getElementById("load-btn").addEventListener("click", async () => {
   btn.innerHTML = '<span class="spinner"></span> Loading…';
 
   try {
+    const request = {
+      bbox:       currentBbox,
+      time_range: [startDate, endDate],
+      variable,
+    };
     const res  = await fetch("/region/select", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        bbox:       currentBbox,
-        time_range: [startDate, endDate],
-        variable,
-      }),
+      body: JSON.stringify(request),
     });
 
     const data = await res.json();
@@ -644,6 +657,7 @@ document.getElementById("load-btn").addEventListener("click", async () => {
 
     // Store for LLM context
     selectionContext = data.stats;
+    setLoadedRequest(request);
 
   } catch (err) {
     console.error(err);
@@ -651,6 +665,56 @@ document.getElementById("load-btn").addEventListener("click", async () => {
   } finally {
     btn.disabled = !currentBbox;
     btn.textContent = "Load Data";
+  }
+});
+
+// ── NetCDF download ────────────────────────────────────────────────────────
+// Downloads the selection that is currently displayed (the last successful
+// Load Data), not whatever the controls have been changed to since.
+function setLoadedRequest(request) {
+  loadedRequest = request;
+  document.getElementById("download-btn").style.display = request ? "inline-block" : "none";
+}
+
+document.getElementById("download-btn").addEventListener("click", async () => {
+  if (!loadedRequest) return;
+
+  const btn = document.getElementById("download-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Preparing…';
+
+  try {
+    const res = await fetch("/region/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(loadedRequest),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Failed to prepare the download.");
+      return;
+    }
+
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match    = disposition.match(/filename="?([^";]+)"?/);
+    const filename = match ? match[1] : "clio_selection.nc";
+
+    const url = URL.createObjectURL(await res.blob());
+    const a   = document.createElement("a");
+    a.href     = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+  } catch (err) {
+    console.error(err);
+    alert("Network error while downloading data.");
+  } finally {
+    btn.disabled = !loadedRequest;
+    btn.textContent = "Download NetCDF";
   }
 });
 
